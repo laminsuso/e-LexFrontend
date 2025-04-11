@@ -1,0 +1,173 @@
+import React from "react";
+import ReactDOM from "react-dom/client";
+import "./index.css";
+import App from "./App";
+import reportWebVitals from "./reportWebVitals";
+import { RouterProvider, createBrowserRouter } from "react-router-dom";
+import Login from "./login";
+import Pricing from "./pricing";
+import AdminLayout from "./component/adminheader";
+import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
+import { loadStripe } from "@stripe/stripe-js";
+import {
+  PaymentElement,
+  Elements,
+  useStripe,
+  useElements,
+} from "@stripe/react-stripe-js";
+import DashboardPage from "./dashboard";
+import SignYourselfPage from "./signupyourself";
+import RequestSignaturesPage from "./requestsignature";
+import SignDocumentPage from "./signdocument";
+import ViewPdf from "./viewpdf";
+import CreateTemplate from "./createtemplate";
+import Signatures from "./signaturesettings";
+import Preferences from "./preferences";
+import Profile from "./profile";
+import EditTemplate from "./edittemplate";
+import ManageTemplate from "./managetemplates";
+import NeedYourSign from "./needyoursign";
+import SignRequests from "./requests";
+import Completed from "./completed";
+import Drafts from "./drafts";
+import DeclinedComponent from "./declined";
+import ExpiredComponent from "./expired";
+import ContactBooks from "./contactbook";
+import ForgotPassword from "./forgotpassword";
+import Inprogress from "./inprogress";
+import Draftsdocs from "./draftdocs";
+import Subscription from "./subscription";
+import ChangePassword from "./changePassword";
+import UseTemplate from "./usetemplate";
+import PublicProfile from "./publicProfile";
+const stripePromise = loadStripe(
+  "pk_test_51OwuO4LcfLzcwwOYdssgGfUSfOgWT1LwO6ewi3CEPewY7WEL9ATqH6WJm3oAcLDA3IgUvVYLVEBMIEu0d8fUwhlw009JwzEYmV"
+);
+
+const router = createBrowserRouter([
+  {
+    path: "/",
+    element: <App />,
+  },
+  {
+    path: "/join",
+    element: <Login />,
+  },
+  {
+    path: "/forgetpassword",
+    element: <ForgotPassword />,
+  },
+  {
+    path: "/pricing",
+    element: <Pricing />,
+  },
+  {
+    path: "/publicprofile",
+    element: <PublicProfile />,
+  },
+  {
+    path: "/changepassword/:email",
+    element: <ChangePassword />,
+  },
+  {
+    path: "/subscription",
+    element: (
+      <PayPalScriptProvider
+        options={{
+          clientId:
+            "Aeiv6CI9M6IO70akUujuPV6ru2XJ337_GON5oIAAInPBcavq0up_hZl0NFJwcxmf6mk2tgkJX9sPH4zr",
+        }}
+      >
+        <Elements stripe={stripePromise}>
+          <Subscription />
+        </Elements>
+      </PayPalScriptProvider>
+    ),
+  },
+  {
+    path: "/admin",
+    element: <AdminLayout />,
+    children: [ 
+      { index: true, element: <DashboardPage /> },
+      { path: "sign-yourself", element: <SignYourselfPage /> },
+      { path: "request-signatures", element: <RequestSignaturesPage /> },
+      {
+        path: "request-signatures/sign-document/:documentId",
+        element: <SignDocumentPage />,
+      },
+      {
+        path: "view-pdf/sign-document/:documentId",
+        element: <ViewPdf />,
+      },
+      {
+        path: "template/create",
+        element: <CreateTemplate />,
+      },
+      {
+        path: "settings/signatures",
+        element: <Signatures />,
+      },
+      {
+        path: "settings/preferences",
+        element: <Preferences />,
+      },
+      {
+        path: "/admin/profile",
+        element: <Profile />,
+      },
+      {
+        path: "edittemplate/:documentId",
+        element: <EditTemplate />,
+      },
+      {
+        path: "usetemplate/:documentId",
+        element: <UseTemplate />,
+      },
+      {
+        path: "template/manage",
+        element: <ManageTemplate />,
+      },
+      {
+        path: "documents/need-sign",
+        element: <NeedYourSign />,
+      },
+      {
+        path: "documents/in-progress",
+        element: <Inprogress />,
+      },
+      {
+        path: "documents/completed",
+        element: <Completed />,
+      },
+      {
+        path: "documents/drafts",
+        element: <Draftsdocs />,
+      },
+      {
+        path: "documents/declined",
+        element: <DeclinedComponent />,
+      },
+      {
+        path: "documents/expired",
+        element: <ExpiredComponent />,
+      },
+      {
+        path: "contactbook",
+        element: <ContactBooks />,
+      },
+     
+    ],
+  },
+]);
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(
+
+    <RouterProvider router={router} />
+ 
+);
+
+// If you want to start measuring performance in your app, pass a function
+// to log results (for example: reportWebVitals(console.log))
+// or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
+reportWebVitals();
