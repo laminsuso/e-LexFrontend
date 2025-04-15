@@ -124,18 +124,89 @@ return
       documentId:currentTemplate._id,
       recipients
     }
-await axios.patch(`${BASE_URL}/assignEmailToRole`,data,headers)
 
-     let response=await axios.post(`${BASE_URL}/sendSignRequest`,data,headers)
+let toSendTemplate=currentTemplate;
+let elements = toSendTemplate.elements;
+elements.forEach(element => {
+  
+  if (!element.recipientEmail) {
+   
+    const matchingRecipient = recipients.find(recipient => recipient.role === element.recipientRole);
+    
+   
+    if (matchingRecipient) {
+      element.recipientEmail = matchingRecipient.email;
+    }
+  }
+});
+
+  
+//
+let form=new FormData();
+form.append("document", currentTemplate.file);
+form.append("elements", JSON.stringify(elements));
+form.append('documentId',currentTemplate._id)
+
+const embedResponse = await axios.post(
+  `${BASE_URL}/embedElementsInPDF`,
+  form,
+  headers
+);
+
+const blob = new Blob([embedResponse.data], { type: "application/pdf" });
+const newfile = new File([blob], `signedDocument-${currentTemplate._id}`, {
+  type: "application/pdf",
+});
+const dataForm = new FormData();
+dataForm.append("document", newfile);
+
+
+
+let newData={
+...currentTemplate,
+elements,
+signTemplate:true
+}
+
+
+
+let res=await axios.post(`${BASE_URL}/createSignTemplate`,newData)
+
+
+let edited=await axios.patch(`${BASE_URL}/editDocument/${res.data.doc._id}`,dataForm,headers)
+
+
+
+//
+
+data={
+  ...data,
+  documentId:res.data.doc._id
+}
+
+
+
+     let response=await axios.post(`${BASE_URL}/sendSignRequest`,{documentId:res.data.doc._id,recipients:recipients},headers)
      toast.success("Documents sent successfully!", {
       containerId: "manageTemplate",
     });
-    setShowBulkSendModal(false);
+    
+    setTimeout(()=>{
+window.location.reload(true)
+    },500)
 
     } catch (error) {
-      toast.error("Failed to send documents", {
-        containerId: "manageTemplate",
-      });
+      
+      if(error?.response?.data?.error){
+        toast.error(error?.response?.data?.error, {
+          containerId: "manageTemplate",
+        });
+      }else{
+        toast.error("Failed to send documents", {
+          containerId: "manageTemplate",
+        });
+      }
+      
     }
   };
 
@@ -464,7 +535,7 @@ if(e?.response?.data?.error){
               <ul className="space-y-2">
                 {currentSigners.map((signer, index) => (
                   <li key={index} className="border-b pb-2 last:border-b-0">
-                    {signer}
+                    {signer?.email}
                   </li>
                 ))}
               </ul>
