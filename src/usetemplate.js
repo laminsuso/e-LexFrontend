@@ -35,6 +35,7 @@ const UseTemplate = () => {
   let id = params.documentId;
   const [showAddSignerModal, setShowAddSignerModal] = useState(true);
   const [showAddContactModal, setShowAddContactModal] = useState(false);
+  const [currentRole,setCurrentRole]=useState("")
   const [showSendConfirmation, setShowSendConfirmation] = useState(false);
   const [currentTemplate,setCurrentTemplate]=useState()
   const [selectRoles,setSelectRoles]=useState([])
@@ -500,16 +501,40 @@ console.log(newContact.phone)
       return;
     }
     if (newContact.email) {
+     
       setstaticEmails((prev) => [...prev, newContact]);
       setShowAddContactModal(false);
       setNewContact({ email: "", name: "", phone: "" });
-      setRecipients([
-        ...recipients,
-        {
-          email: newContact.email,
-          role: "Signer",
-        },
-      ]);
+      setRecipients((prev)=>{
+        let old=[...prev]
+        let findIndex=old.findIndex(u=>u.role==currentRole && u.email.length==0)
+        if(findIndex>=0){
+          old[findIndex]={
+            ...old[findIndex],
+            email:newContact.email
+          }
+        }else{
+          old=[...old,{
+            email: newContact.email,
+          role: currentRole,
+          }]
+        }
+        return old
+      })
+
+   setSignatureElements((prev)=>{
+    let old=[...prev]
+    let findIndex=old.findIndex(u=>u.recipientRole==currentRole && u.recipientEmail.length==0)
+    if(findIndex){
+      old[findIndex]={
+        ...old[findIndex],
+        recipientEmail:newContact.email
+      }
+    }
+    return old
+   })
+     
+      setCurrentRole("")
     }
    }catch(e){
 console.log(e.message)
@@ -525,12 +550,54 @@ console.log(e.message)
         authorization:`Bearer ${token}`
       }
     }
-    let restwo=await axios.post(`${BASE_URL}/sendSignRequest`,{documentId:viewTemplateId,recipients:recipients},headers)
+    let isEmpty=recipients.find(u=>u.email.length==0)
+    if(isEmpty){
+      toast.error('Please assign email to all roles',{containerId:"editTemplate"})
+      return
+    }
+   
+
+
+    let form=new FormData();
+    form.append("document", currentTemplate.file);
+    form.append("elements", JSON.stringify(signatureElements));
+   form.append('documentId',currentTemplate._id)
+  
+    const embedResponse = await axios.post(
+      `${BASE_URL}/embedElementsInPDF`,
+      form,
+      headers
+    );
+   
+    const blob = new Blob([embedResponse.data], { type: "application/pdf" });
+    const newfile = new File([blob], `signedDocument-${currentTemplate._id}`, {
+      type: "application/pdf",
+    });
+    const dataForm = new FormData();
+    dataForm.append("document", newfile);
+   
+
+    
+  let newData={
+    ...currentTemplate,
+    elements:signatureElements,
+    signTemplate:true
+  }
+
+  
+  let res=await axios.post(`${BASE_URL}/createSignTemplate`,newData)
+ 
+  
+  let edited=await axios.patch(`${BASE_URL}/editDocument/${res.data.doc._id}`,dataForm,headers)
+
+    
+    let restwo=await axios.post(`${BASE_URL}/sendSignRequest`,{documentId:res.data.doc._id,recipients:recipients},headers)
     toast.success("Document sent successfully!",{containerId:"editTemplate"});
     setShowAddSignerModal(false);
     window.location.href='/admin/template/create'
     setShowSendConfirmation(false);
    }catch(e){
+    console.log(e.message)
 if(e?.response?.data?.error){
   toast.error(e?.response?.data?.error,{containerId:"editTemplate"})
 }else{
@@ -541,6 +608,12 @@ if(e?.response?.data?.error){
 
 
   const createTemplateView=async()=>{
+    let isEmpty=recipients.find(u=>u.email.length==0)
+    if(isEmpty){
+      toast.error('Please assign email to all roles',{containerId:"editTemplate"})
+      return
+    }
+   
     try{
       setCurrentTemplate((prev)=>{
         let old={...prev}
@@ -550,14 +623,47 @@ if(e?.response?.data?.error){
         }
         return old;
       })
-      let newData={
-        ...currentTemplate,
-        elements:signatureElements,
-        signTemplate:true
-      }
- 
+     
+      let token = localStorage.getItem("token");
+      let headers = {
+        headers: {
+          authorization: `Bearer ${token}`,
+        },
+      };
       
-      let res=await axios.post(`${BASE_URL}/createSignTemplate`,newData)
+    let form=new FormData();
+    form.append("document", currentTemplate.file);
+    form.append("elements", JSON.stringify(signatureElements));
+   form.append('documentId',currentTemplate._id)
+  
+    const embedResponse = await axios.post(
+      `${BASE_URL}/embedElementsInPDF`,
+      form,
+      headers
+    );
+   
+    const blob = new Blob([embedResponse.data], { type: "application/pdf" });
+    const newfile = new File([blob], `signedDocument-${currentTemplate._id}`, {
+      type: "application/pdf",
+    });
+    const dataForm = new FormData();
+    dataForm.append("document", newfile);
+   
+
+    
+  let newData={
+    ...currentTemplate,
+    elements:signatureElements,
+    signTemplate:true
+  }
+
+  
+  let res=await axios.post(`${BASE_URL}/createSignTemplate`,newData)
+ 
+  
+  let edited=await axios.patch(`${BASE_URL}/editDocument/${res.data.doc._id}`,dataForm,headers)
+
+    
 setViewTemplateId(res.data.doc._id)
 setShowSendConfirmation(true)
     }catch(e){
@@ -749,13 +855,37 @@ setShowSendConfirmation(true)
                               toast.error("This email is already assigned a different role.", { containerId: "editTemplate" });
                             } else {
                             
-                              setRecipients([
-                                ...recipients,
-                                {
-                                  email: email,
-                                  role: role.roleValue,
-                                },
-                              ]);
+
+              
+                              setRecipients((prev)=>{
+                                let old=[...prev]
+                                
+                                let findIndex=old.findIndex(u=>u.role==role.roleValue && u.email.length==0)
+                                if(findIndex>=0){
+                                  old[findIndex]={
+                                    ...old[findIndex],
+                                    email
+                                  }
+                                }else{
+                                  old=[...old,{ email: email,
+                                    role: role.roleValue
+                                  }]
+                                }
+                                return old
+                              })
+
+                              setSignatureElements((prev)=>{
+                                let old=[...prev]
+                                let findIndex=old.findIndex(u=>u.recipientRole==role.roleValue && u.recipientEmail.length==0)
+                                if(findIndex){
+                                  old[findIndex]={
+                                    ...old[findIndex],
+                                    recipientEmail:email
+                                  }
+                                }
+                                return old
+                               })
+                             
                             }
                           }}
                           
@@ -768,7 +898,11 @@ setShowSendConfirmation(true)
                           ))}
                         </select>
                         <button
-                          onClick={() => setShowAddContactModal(true)}
+                          onClick={() => {
+                           
+                            setCurrentRole(role.roleName)
+                            setShowAddContactModal(true)
+                          }}
                           className="text-red-600 border-red-600 border px-3 py-1 rounded hover:bg-red-600 hover:text-white"
                         >
                           +
