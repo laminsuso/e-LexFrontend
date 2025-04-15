@@ -38,18 +38,14 @@ export default function ChangePassword() {
         return;
       }
 
-      let token = localStorage.getItem("token");
-      let headers = {
-        headers: {
-          authorization: `Bearer ${token}`,
-        },
-      };
+   
 
       let response = await axios.post(
         `${BASE_URL}/resetPassword`,
-        passwordState,
-        headers
+        {password:passwordState.password,email}
       );
+
+      
 setPasswordState({
   password:'',
   confirm_password:''

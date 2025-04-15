@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import img from "./images/loginimg.svg";
 import { ToastContainer,toast } from "react-toastify";
 import axios from "axios";
+import "react-toastify/dist/ReactToastify.css";
 import { BASE_URL } from "./baseUrl";
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
@@ -13,17 +14,11 @@ export default function ForgotPassword() {
       return;
     }
     try{
-      let token=localStorage.getItem('token')
-      let headers={
-        headers:{
-          authorization:`Bearer ${token}`
-        }
-      }
-let response=await axios.post(`${BASE_URL}/sendPasswordResetLinks`,{email},headers)
+    
+let response=await axios.post(`${BASE_URL}/sendPasswordResetLinks`,{email})
 toast.success("Please check your email",{containerId:"forget-password"})
 setEmail("")
     }catch(e){
-     
       if(e?.response?.data?.error){
         toast.error(e?.response?.data?.error,{containerId:"forget-password"})
       }else{
@@ -37,13 +32,10 @@ setEmail("")
     
     <div className="lg:px-[64px] lg:pt-[40px] px-[20px] py-[20px] lg:pb-[10px] bg-[#e5e7eb]">
       <div className="p-[24px] bg-[#ffffff] rounded-[16px]">
-        <a href="/" className="max-w-[250px] flex">
-          <img
-            src="https://logosbynick.com/wp-content/uploads/2018/03/final-logo-example.png"
-            alt="logo"
-            className="w-full"
-          />
-        </a>
+      <a href="/" className="max-w-[250px] flex gap-2 justify-center items-center">
+                <img className="h-8" src="https://res.cloudinary.com/dbjwbveqn/image/upload/v1744296499/icononly_transparent_nobuffer_xmjeis.png" alt="logo"  />
+            E-Lex Signature
+            </a>
         <div className="flex gap-[10px]">
           <div className="w-full flex  lg:w-1/2">
             <div className="flex flex-col w-full">

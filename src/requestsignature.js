@@ -56,6 +56,7 @@ const RequestSignaturesPage = () => {
   const [radioOptions, setRadioOptions] = useState("");
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showOptionsModal, setShowOptionsModal] = useState(false);
+  const [showSendPopup,setShowSendPopup]=useState(false)
   const [currentTool, setCurrentTool] = useState(null);
   const [isPreviewMode] = useState(false);
 
@@ -129,6 +130,106 @@ fetchContactBooks();
     
     
   };
+const sendThroughEmail=async()=>{
+try{
+  const token = localStorage.getItem("token");
+  const headers = { headers: { authorization: `Bearer ${token}` } };
+
+  const form = new FormData();
+  form.append("document", file);
+  form.append("title", formData.title);
+  form.append("elements", JSON.stringify(signatureElements));
+ 
+
+  const saveResponse = await axios.post(
+    `${BASE_URL}/saveDocument`,
+    form,
+    headers
+  );
+  console.log(saveResponse)
+  console.log('save response')
+
+  await axios.post(
+    `${BASE_URL}/sendSignRequest`,
+    {
+      ...formData,
+      documentId: saveResponse.data.doc._id,
+      elements: signatureElements,
+     
+    },
+    headers
+  );
+
+  toast.success(`Signature request sent`,{containerId:"requestSignature"});
+  setFile(null);
+  setFormData({
+    title: "",
+    note: "",
+    folder: "default",
+    recipients: [],
+  });
+  setSignatureElements([]);
+ window.location.reload(true) 
+}catch(e){
+  if(e?.response?.data?.error){
+    toast.error(e?.response?.data?.error,{containerId:"requestSignature"})
+  }else{
+    toast.error("Something went wrong pleae try again",{containerId:"requestSignature"})
+  }
+
+}
+}
+
+
+const sendThroughShare=async(email)=>{
+try{
+  const token = localStorage.getItem("token");
+  const headers = { headers: { authorization: `Bearer ${token}` } };
+
+  const form = new FormData();
+  form.append("document", file);
+  form.append("title", formData.title);
+  form.append("elements", JSON.stringify(signatureElements));
+ 
+
+  const saveResponse = await axios.post(
+    `${BASE_URL}/saveDocument`,
+    form,
+    headers
+  );
+  
+ 
+
+  const link = `${window.location.origin}/admin/request-signatures/sign-document/${saveResponse.data.doc._id}?email=${email}`;
+  
+    if (navigator.share) {
+      navigator.share({
+        title: 'Sign Document',
+        text: 'Please sign the document',
+        url: link,
+      })
+      .then(() => {
+        toast.success(`Signature request sent`,{containerId:"requestSignature"});
+      window.location.reload(true)
+       
+      
+      })
+      .catch((error) => {
+        console.log(error.message)
+        toast.error("Failed to share the link", { containerId: "requestSignature" });
+      });
+    } 
+
+}catch(e){
+  if(e?.response?.data?.error){
+    toast.error(e?.response?.data?.error,{containerId:"requestSignature"})
+  }else{
+    toast.error("Something went wrong pleae try again",{containerId:"requestSignature"})
+  }
+
+}
+}
+
 
   const removeRecipient = (index) => {
     setFormData({
@@ -254,44 +355,46 @@ fetchContactBooks();
         toast.error("Atleast one element should be created for each recipient",{containerId:"requestSignature"});
         return
       } 
-      const token = localStorage.getItem("token");
-      const headers = { headers: { authorization: `Bearer ${token}` } };
 
-      const form = new FormData();
-      form.append("document", file);
-      form.append("title", formData.title);
-      form.append("elements", JSON.stringify(signatureElements));
+    //   const token = localStorage.getItem("token");
+    //   const headers = { headers: { authorization: `Bearer ${token}` } };
+
+    //   const form = new FormData();
+    //   form.append("document", file);
+    //   form.append("title", formData.title);
+    //   form.append("elements", JSON.stringify(signatureElements));
      
 
-      const saveResponse = await axios.post(
-        `${BASE_URL}/saveDocument`,
-        form,
-        headers
-      );
-      console.log(saveResponse)
-      console.log('save response')
+    //   const saveResponse = await axios.post(
+    //     `${BASE_URL}/saveDocument`,
+    //     form,
+    //     headers
+    //   );
+    //   console.log(saveResponse)
+    //   console.log('save response')
 
-      await axios.post(
-        `${BASE_URL}/sendSignRequest`,
-        {
-          ...formData,
-          documentId: saveResponse.data.doc._id,
-          elements: signatureElements,
+    //   await axios.post(
+    //     `${BASE_URL}/sendSignRequest`,
+    //     {
+    //       ...formData,
+    //       documentId: saveResponse.data.doc._id,
+    //       elements: signatureElements,
          
-        },
-        headers
-      );
+    //     },
+    //     headers
+    //   );
 
-      toast.success(`Signature request sent`,{containerId:"requestSignature"});
-      setFile(null);
-      setFormData({
-        title: "",
-        note: "",
-        folder: "default",
-        recipients: [],
-      });
-      setSignatureElements([]);
-     window.location.reload(true) 
+    //   toast.success(`Signature request sent`,{containerId:"requestSignature"});
+    //   setFile(null);
+    //   setFormData({
+    //     title: "",
+    //     note: "",
+    //     folder: "default",
+    //     recipients: [],
+    //   });
+    //   setSignatureElements([]);
+    //  window.location.reload(true) 
+     setShowSendPopup(true)
     } catch (error) {
       console.error("Submission failed:", error);
     if(error?.response?.data?.error){
@@ -749,6 +852,78 @@ return;
         </div>
       )}
     </div>
+    {showSendPopup && (
+       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+       <div className="bg-white p-6 rounded-lg w-96 text-left">
+         <div className="flex justify-between">
+           <h3 className="text-xl font-bold mb-4">Send Mail</h3>
+           <div
+             className="text-[18px] cursor-pointer"
+             onClick={() => {
+               setShowSendPopup(false)
+             }}
+           >
+             X
+           </div>
+         </div>
+         <p className="mb-6">
+           Are you sure you want to send out this document for
+           signatures?
+         </p>
+
+         <div className="flex items-center mb-6">
+           <button
+             className="bg-[#002864] text-white px-4 w-full py-2 rounded"
+            onClick={sendThroughEmail}
+           >
+             Send
+           </button>
+         
+         </div>
+
+         <div className="relative mb-6">
+           <div className="absolute inset-0 flex items-center">
+             <div className="w-full border-t border-gray-300"></div>
+           </div>
+           <div className="relative flex justify-center">
+             <span className="bg-white px-2 text-gray-500">OR</span>
+           </div>
+         </div>
+
+       {formData?.recipients?.map((val,i)=>{
+        return <div key={i.toString()} className="flex justify-between items-center">
+       <div>
+         <p className="text-gray-600">{val?.email}</p>
+       </div>
+       <div className="flex items-center">
+         
+         <button
+          onClick={()=>sendThroughShare(val?.email)}
+           className="text-blue-600 underline flex items-center"
+         >
+           <svg
+             xmlns="http://www.w3.org/2000/svg"
+             className="h-4 w-4 mr-1"
+             fill="none"
+             viewBox="0 0 24 24"
+             stroke="currentColor"
+           >
+             <path
+               strokeLinecap="round"
+               strokeLinejoin="round"
+               strokeWidth={2}
+               d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
+             />
+           </svg>
+           Share
+         </button>
+       </div>
+     </div>
+       })}
+      
+       </div>
+     </div>
+    )}
    </>
   );
 };

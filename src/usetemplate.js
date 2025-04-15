@@ -897,14 +897,12 @@ setShowSendConfirmation(true)
 
                 <div className="flex items-center mb-6">
                   <button
-                    className="bg-[#002864] text-white px-4 py-2 rounded"
+                    className="bg-[#002864] w-full text-white px-4 py-2 rounded"
                     onClick={handleSendDocument}
                   >
                     Send
                   </button>
-                  <a href="#" className="text-red-600 underline ml-4">
-                    Upgrade to customize Email
-                  </a>
+                 
                 </div>
 
                 <div className="relative mb-6">
