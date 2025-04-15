@@ -33,6 +33,7 @@ const recipientColors = [
 const UseTemplate = () => {
   const params = useParams();
   let id = params.documentId;
+  const [loading,setLoading]=useState(false)
   const [showAddSignerModal, setShowAddSignerModal] = useState(true);
   const [showAddContactModal, setShowAddContactModal] = useState(false);
   const [currentRole,setCurrentRole]=useState("")
@@ -543,7 +544,7 @@ console.log(e.message)
 
   const handleSendDocument = async() => {
    try{
-    
+   
     let token=localStorage.getItem('token')
     let headers={
       headers:{
@@ -555,6 +556,8 @@ console.log(e.message)
       toast.error('Please assign email to all roles',{containerId:"editTemplate"})
       return
     }
+
+    setLoading(true)
    
 
 
@@ -597,6 +600,7 @@ console.log(e.message)
     window.location.href='/admin/template/create'
     setShowSendConfirmation(false);
    }catch(e){
+    setLoading(false)
     console.log(e.message)
 if(e?.response?.data?.error){
   toast.error(e?.response?.data?.error,{containerId:"editTemplate"})
@@ -650,11 +654,17 @@ if(e?.response?.data?.error){
     dataForm.append("document", newfile);
    
 
-    
+    let signers=signatureElements.map((val,i)=>{
+      return {
+        email:val.recipientEmail
+      }
+    })
+
   let newData={
     ...currentTemplate,
     elements:signatureElements,
-    signTemplate:true
+    signTemplate:true,
+    signers
   }
 
   
@@ -1009,7 +1019,7 @@ setShowSendConfirmation(true)
             </div>
           )}
 
-          {showSendConfirmation && (
+          {showSendConfirmation && loading==false?(
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
               <div className="bg-white p-6 rounded-lg w-96 text-left">
                 <div className="flex justify-between">
@@ -1099,7 +1109,56 @@ setShowSendConfirmation(true)
                })}
               </div>
             </div>
-          )}
+          ):showSendConfirmation && loading==true?(
+            <>
+           <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50">
+  <div className="bg-white p-8 rounded-xl shadow-xl w-full max-w-2xl mx-4">
+    <div className="flex justify-between items-start mb-6">
+      <h3 className="text-2xl font-semibold text-gray-900">
+        Processing Email Delivery
+        <span className="block text-sm font-normal text-gray-500 mt-1">
+          Please wait while we send documents to all recipients
+        </span>
+      </h3>
+     
+    </div>
+
+    <div className="bg-blue-50 p-5 rounded-lg border border-blue-200 mb-6">
+      <h4 className="font-medium text-blue-800 mb-3 flex items-center gap-2">
+        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+          <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
+        </svg>
+        Bulk Send Requirements
+      </h4>
+      <div className="text-blue-700 space-y-2">
+        <p className="flex items-start gap-2">
+          <span className="mt-1">•</span>
+          <span>Currently all template roles are assigned to specific contacts</span>
+        </p>
+        <p className="flex items-start gap-2">
+          <span className="mt-1">•</span>
+          <span>To enable bulk sending, please ensure at least one role remains unassigned</span>
+        </p>
+      </div>
+    </div>
+
+    <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+      <p className="text-yellow-800 flex items-start gap-2">
+        <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+          <path d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" />
+        </svg>
+        <span>
+          Note: Bulk sending allows simultaneous distribution to multiple signers. 
+          Unassigned roles will create unique links for individual recipient assignment.
+        </span>
+      </p>
+    </div>
+
+   
+  </div>
+</div>
+            </>
+          ):''}
 
           {showRoleModal && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">

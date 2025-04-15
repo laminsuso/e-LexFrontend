@@ -23,6 +23,7 @@ const FIELD_TYPES = {
 
 const CreateTemplate = () => {
   const [file, setFile] = useState(null);
+  const [loading,setLoading]=useState(false)
   const [formData, setFormData] = useState({
     title: "",
     sendInOrder: "yes",
@@ -267,6 +268,7 @@ return;
 
   const handleSaveTemplate = async () => {
     try {
+      setLoading(true)
       const token = localStorage.getItem("token");
       const headers = { headers: { authorization: `Bearer ${token}` } };
       const containerWidth = containerRef.current?.offsetWidth || 800;
@@ -281,10 +283,12 @@ return;
 let allRolesNotAssigned=elementsToSave.find(u=>u.recipientRole.length==0)
 
 if(allRolesNotAssigned){
+  setLoading(false)
   toast.error("Please assign roles to all elements",{containerId:"template"})
   return
 }else if(!elementsToSave || elementsToSave?.length==0){
   toast.error("Please insert elements",{containerId:"template"})
+  setLoading(false)
   return
 }
 const form = new FormData();
@@ -313,6 +317,7 @@ const form = new FormData();
      window.location.reload(true)
       // setStep(1);
     } catch (error) {
+      setLoading(false)
      
       if (error?.response?.data?.error) {
         toast.error(error?.response?.data?.error, { containerId: "template" });
@@ -806,6 +811,18 @@ const form = new FormData();
           </div>
         )}
       </div>
+
+      {loading?<div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50">
+  <div className="bg-white p-8 rounded-xl shadow-xl w-full max-w-2xl mx-4 text-center">
+    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+    <h3 className="text-2xl font-semibold text-gray-900 mb-2">
+      Creating Template
+    </h3>
+    <p className="text-gray-600">
+      Please wait while your template is being created and configured
+    </p>
+  </div>
+</div>:''}
     </>
   );
 };

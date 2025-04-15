@@ -39,6 +39,7 @@ const RequestSignaturesPage = () => {
   const [emails, setEmails] = useState([]);
   const [step, setStep] = useState(1);
   const [file, setFile] = useState(null);
+  const [loading,setLoading]=useState(false)
   const [formData, setFormData] = useState({
     title: "",
     note: "",
@@ -47,12 +48,14 @@ const RequestSignaturesPage = () => {
   });
   const [signatureElements, setSignatureElements] = useState([]);
   const [selectedEmail, setSelectedEmail] = useState("");
+  const [isSocial,setIsSocial]=useState(false)
   const [contactBook,setContactBook]=useState([])
   const [draggedElement, setDraggedElement] = useState(null);
   const [positionOffset, setPositionOffset] = useState({ x: 0, y: 0 });
   const [dropPosition, setDropPosition] = useState({ x: 0, y: 0 });
   const [numPages, setNumPages] = useState(null);
   const [dropdownOptions, setDropdownOptions] = useState("");
+  const [shareId,setShareId]=useState("")
   const [radioOptions, setRadioOptions] = useState("");
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showOptionsModal, setShowOptionsModal] = useState(false);
@@ -134,7 +137,8 @@ const sendThroughEmail=async()=>{
 try{
   const token = localStorage.getItem("token");
   const headers = { headers: { authorization: `Bearer ${token}` } };
-
+setLoading(true)
+setIsSocial(false)
   const form = new FormData();
   form.append("document", file);
   form.append("title", formData.title);
@@ -176,6 +180,8 @@ try{
   }else{
     toast.error("Something went wrong pleae try again",{containerId:"requestSignature"})
   }
+  setLoading(false)
+setIsSocial(false)
 
 }
 }
@@ -183,25 +189,29 @@ try{
 
 const sendThroughShare=async(email)=>{
 try{
-  const token = localStorage.getItem("token");
+  if(!shareId.length>0){
+    setLoading(true)
+    setIsSocial(true)
+    const token = localStorage.getItem("token");
   const headers = { headers: { authorization: `Bearer ${token}` } };
 
   const form = new FormData();
   form.append("document", file);
   form.append("title", formData.title);
   form.append("elements", JSON.stringify(signatureElements));
- 
-
+ let signers=signatureElements.map((val,i)=>{
+  return {
+    email:val.recipientEmail
+  }
+ })
+form.append('signers',JSON.stringify(signers))
   const saveResponse = await axios.post(
     `${BASE_URL}/saveDocument`,
     form,
     headers
   );
-  
- 
-
   const link = `${window.location.origin}/admin/request-signatures/sign-document/${saveResponse.data.doc._id}?email=${email}`;
-  
+  setShareId(saveResponse.data.doc._id)
     if (navigator.share) {
       navigator.share({
         title: 'Sign Document',
@@ -219,8 +229,36 @@ try{
         toast.error("Failed to share the link", { containerId: "requestSignature" });
       });
     } 
+  }else{
+    setLoading(false)
+    setIsSocial(false)
+    const link = `${window.location.origin}/admin/request-signatures/sign-document/${shareId}?email=${email}`;
+  setShareId("")
+    if (navigator.share) {
+      navigator.share({
+        title: 'Sign Document',
+        text: 'Please sign the document',
+        url: link,
+      })
+      .then(() => {
+        toast.success(`Signature request sent`,{containerId:"requestSignature"});
+      
+       
+      
+      })
+      .catch((error) => {
+        console.log(error.message)
+        toast.error("Failed to share the link", { containerId: "requestSignature" });
+      });
+    } 
+  }
+ 
+
+  
 
 }catch(e){
+  setLoading(false)
+setIsSocial(false)
   if(e?.response?.data?.error){
     toast.error(e?.response?.data?.error,{containerId:"requestSignature"})
   }else{
@@ -924,6 +962,100 @@ return;
        </div>
      </div>
     )}
+
+    {loading && !isSocial?<>
+      <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50">
+  <div className="bg-white p-8 rounded-xl shadow-xl w-full max-w-2xl mx-4">
+    <div className="flex justify-between items-start mb-6">
+      <h3 className="text-2xl font-semibold text-gray-900">
+        Sending Document Invitations
+        <span className="block text-sm font-normal text-gray-500 mt-1">
+          Server is sending signing invitations to recipients - please wait
+        </span>
+      </h3>
+    </div>
+
+    <div className="bg-blue-50 p-5 rounded-lg border border-blue-200 mb-6">
+      <h4 className="font-medium text-blue-800 mb-3 flex items-center gap-2">
+        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+          <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
+          <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
+        </svg>
+        Invitation Process Status
+      </h4>
+      <div className="text-blue-700 space-y-2">
+        <p className="flex items-start gap-2">
+          <span className="mt-1">•</span>
+          <span>Secure invitation links being generated</span>
+        </p>
+        <p className="flex items-start gap-2">
+          <span className="mt-1">•</span>
+          <span>Email notifications queued for delivery</span>
+        </p>
+        <p className="flex items-start gap-2">
+          <span className="mt-1">•</span>
+          <span>Document access permissions being configured</span>
+        </p>
+      </div>
+    </div>
+
+    <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+      <p className="text-yellow-800 flex items-start gap-2">
+        <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+          <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
+        </svg>
+        <span>
+          Note: Invitations contain secure links to access documents. 
+          Recipients will receive emails with signing instructions.
+        </span>
+      </p>
+    </div>
+
+    <div className="mt-6 text-center text-sm text-gray-500">
+      <p>This process typically takes 15-30 seconds. Do not close this window.</p>
+    </div>
+  </div>
+</div>
+    </>:loading && isSocial?<>
+    <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50">
+  <div className="bg-white p-8 rounded-xl shadow-xl w-full max-w-2xl mx-4">
+    <div className="flex flex-col items-center mb-6">
+   
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+      
+      <h3 className="text-2xl font-semibold text-gray-900 text-center">
+        Generating Recipient Invitations
+        <span className="block text-sm font-normal text-gray-500 mt-2">
+          Please wait while we generate your recipient invitation links
+        </span>
+      </h3>
+    </div>
+
+    <div className="bg-blue-50 p-5 rounded-lg border border-blue-200 mb-6">
+      <div className="text-blue-700 space-y-2">
+        <p className="flex items-start gap-2">
+          <span className="mt-1">•</span>
+          <span>Securely generating unique signing links for each recipient</span>
+        </p>
+        <p className="flex items-start gap-2">
+          <span className="mt-1">•</span>
+          <span>Preparing invitation emails with document access</span>
+        </p>
+        <p className="flex items-start gap-2">
+          <span className="mt-1">•</span>
+          <span>Encrypting sensitive document information</span>
+        </p>
+      </div>
+    </div>
+
+    <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+      <p className="text-gray-600 text-sm text-center">
+        This process typically takes 10-15 seconds. Please do not close this window.
+      </p>
+    </div>
+  </div>
+</div>
+    </>:''}
    </>
   );
 };

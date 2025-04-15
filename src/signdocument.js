@@ -19,6 +19,7 @@ const FRONTEND_DATE_HEIGHT = 45;
 const SignDocumentPage = () => {
   const { documentId } = useParams();
   const [documentData, setDocumentData] = useState(null);
+  const [loading,setLoading]=useState(false)
   const [currentProfile, setCurrentProfile] = useState("");
   const [file, setFile] = useState(null);
   const [signatureElements, setSignatureElements] = useState([]);
@@ -278,6 +279,7 @@ const SignDocumentPage = () => {
   const handleSaveDocument = async () => {
     try {
       const token = localStorage.getItem("token");
+      setLoading(true)
       const embedResponse = await axios.post(
         `${BASE_URL}/embedElementsInPDF`,
         {
@@ -306,11 +308,12 @@ const SignDocumentPage = () => {
           headers: { authorization: `Bearer ${token}` },
         }
       );
-      toast.success("Document signed and downloaded", {
+      toast.success("Document signed", {
         containerId: "signaturesign",
       });
-      setTimeout(() => window.close(), 1000);
+      window.location.href='/admin'
     } catch (error) {
+      setLoading(false)
       toast.error(error?.response?.data?.error || "Something went wrong", {
         containerId: "signaturesign",
       });
@@ -706,6 +709,18 @@ const SignDocumentPage = () => {
           )}
         </div>
       </div>
+
+      {loading?<div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50">
+  <div className="bg-white p-8 rounded-xl shadow-xl w-full max-w-2xl mx-4 text-center">
+    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+    <h3 className="text-2xl font-semibold text-gray-900 mb-2">
+      Updating Document
+    </h3>
+    <p className="text-gray-600">
+      Please wait while the document is being updated
+    </p>
+  </div>
+</div>:``}
     </div>
   );
 };

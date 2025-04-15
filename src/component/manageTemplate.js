@@ -10,6 +10,7 @@ export default function ManageTemplates({ requests, setRequests }) {
   const [currentSigners, setCurrentSigners] = useState([]);
   const [bulkLength,setBulkLength]=useState(0)
   const [currentTemplateId,setCurrentTemplateId]=useState("")
+  const [loading,setLoading]=useState(false)
   const [showBulkSendModal, setShowBulkSendModal] = useState(false);
   const [currentTemplate, setCurrentTemplate] = useState(null);
   const [recipients, setRecipients] = useState([{ role: "", email: "" }]);
@@ -76,13 +77,47 @@ export default function ManageTemplates({ requests, setRequests }) {
 
   const handleBulkSend = (template) => {
     setCurrentTemplate(template);
-    setRecipients([{ role: "", email: "" }]);
+    let recipients = template.elements
+    .map((val, i) => ({
+      email: val.recipientEmail,
+      role: val.recipientRole,
+      alreadyCreated: val.recipientEmail ? true : false 
+    }))
+    
+    .filter((value, index, self) => 
+      index === self.findIndex((t) => (
+        t.email === value.email && t.role === value.role
+      ))
+    );
+  
+  
+  
+ 
+  
+    setRecipients(recipients);
     setShowBulkSendModal(true);
   };
 
   const handleAddRecipient = () => {
-   let totalCases= currentTemplate?.elements?.filter(u=>u?.recipientEmail?.length==0)?.length
-   if(totalCases-1==0){
+   
+    let elementsRecipients = currentTemplate.elements
+  .map((val, i) => ({
+    email: val.recipientEmail,
+    role: val.recipientRole,
+    alreadyCreated: val.recipientEmail ? true : false 
+  }))
+
+  .filter((value, index, self) => 
+    index === self.findIndex((t) => (
+      t.email === value.email && t.role === value.role
+    ))
+  );
+
+
+  console.log(recipients?.length)
+  console.log(elementsRecipients.length)
+
+   if(recipients?.length==elementsRecipients?.length){
 toast.error("No more roles avaiable",{containerId:"manageTemplate"})
 return
    }else{
@@ -94,6 +129,7 @@ return
   const handleRecipientChange = (index, field, value) => {
     const updatedRecipients = [...recipients];
     updatedRecipients[index][field] = value;
+    
     setRecipients(updatedRecipients);
   };
 
@@ -106,14 +142,17 @@ return
 
   const handleBulkSendSubmit = async () => {
     try {
-   
+  
     let missing=recipients.find(u=>u.role.length==0 || u.email.length==0)
     if(missing){
+      setLoading(false)
       toast.error("Please fill each role and email", {
         containerId: "manageTemplate",
       });
       return;
     }
+
+    setLoading(true)
     let token=localStorage.getItem('token')
     let headers={
       headers:{
@@ -160,12 +199,17 @@ const newfile = new File([blob], `signedDocument-${currentTemplate._id}`, {
 const dataForm = new FormData();
 dataForm.append("document", newfile);
 
-
+let signers=recipients.map((val,i)=>{
+  return {
+    email:val.email
+  }
+})
 
 let newData={
 ...currentTemplate,
 elements,
-signTemplate:true
+signTemplate:true,
+
 }
 
 
@@ -206,7 +250,7 @@ window.location.reload(true)
           containerId: "manageTemplate",
         });
       }
-      
+      setLoading(false)
     }
   };
 
@@ -391,6 +435,7 @@ if(e?.response?.data?.error){
                     Use
                   </button>
                   <button
+                  
                     onClick={() => handleBulkSend(request)}
                     className="bg-[#29354a] text-white px-3 py-1 rounded text-sm"
                   >
@@ -551,7 +596,7 @@ if(e?.response?.data?.error){
           </div>
         )}
 
-        {showBulkSendModal && currentTemplate && currentTemplate?.elements?.filter(u=>u?.recipientEmail?.length==0)?.length>0 ?(
+        {showBulkSendModal && loading==false && currentTemplate ?(
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white p-6 rounded-lg w-full max-w-2xl">
               <div className="flex items-center justify-between">
@@ -574,6 +619,7 @@ if(e?.response?.data?.error){
                         Role
                       </label>
                       <select
+                      disabled={recipient?.alreadyCreated}
                         className="w-full p-2 border rounded bg-white"
                         value={recipient.role}
                         onChange={(e) =>
@@ -597,6 +643,7 @@ if(e?.response?.data?.error){
                       <div className="flex">
                         <input
                           type="email"
+                          disabled={recipient?.alreadyCreated}
                           className="flex-1 p-2 border rounded"
                           value={recipient.email}
                           onChange={(e) =>
@@ -610,6 +657,7 @@ if(e?.response?.data?.error){
                         />
                         {recipients.length > 1 && (
                           <button
+                          disabled={recipient?.alreadyCreated}
                             onClick={() => handleRemoveRecipient(index)}
                             className="ml-2 bg-red-500 text-white px-3 rounded"
                           >
@@ -630,6 +678,7 @@ if(e?.response?.data?.error){
                 </button>
 
                 <button
+                disabled={loading}
                   onClick={handleBulkSendSubmit}
                   className="bg-red-600 text-white px-4 py-2 rounded"
                 >
@@ -638,7 +687,7 @@ if(e?.response?.data?.error){
               </div>
             </div>
           </div>
-        ):showBulkSendModal && currentTemplate && currentTemplate?.elements?.filter(u=>u?.recipientEmail?.length==0)?.length==0?(
+        ):showBulkSendModal && loading==false && currentTemplate && currentTemplate?.elements?.filter(u=>u?.recipientEmail?.length==0)?.length==0?(
 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div className="bg-white p-6 rounded-lg w-full max-w-2xl">
           <div className="flex items-center justify-between">
@@ -663,7 +712,57 @@ if(e?.response?.data?.error){
          
         </div>
       </div>
-        ):''}
+        ):loading==true?(
+<div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white p-8 rounded-xl shadow-xl w-full max-w-2xl mx-4">
+            <div className="flex justify-between items-start mb-6">
+              <h3 className="text-2xl font-semibold text-gray-900">
+                Processing Email Delivery
+                <span className="block text-sm font-normal text-gray-500 mt-1">
+                  Please wait while we send documents to all recipients
+                </span>
+              </h3>
+             
+            </div>
+        
+            <div className="bg-blue-50 p-5 rounded-lg border border-blue-200 mb-6">
+              <h4 className="font-medium text-blue-800 mb-3 flex items-center gap-2">
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
+                </svg>
+                Bulk Send Requirements
+              </h4>
+              <div className="text-blue-700 space-y-2">
+                <p className="flex items-start gap-2">
+                  <span className="mt-1">•</span>
+                  <span>Currently all template roles are assigned to specific contacts</span>
+                </p>
+                <p className="flex items-start gap-2">
+                  <span className="mt-1">•</span>
+                  <span>To enable bulk sending, please ensure at least one role remains unassigned</span>
+                </p>
+              </div>
+            </div>
+        
+            <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+              <p className="text-yellow-800 flex items-start gap-2">
+                <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" />
+                </svg>
+                <span>
+                  Note: Bulk sending allows simultaneous distribution to multiple signers. 
+                  Unassigned roles will create unique links for individual recipient assignment.
+                </span>
+              </p>
+            </div>
+        
+            <div className="mt-6 flex justify-end">
+             
+            </div>
+          </div>
+        </div>
+        ):''
+        }
         {showRename && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white p-6 rounded-lg w-full max-w-2xl">

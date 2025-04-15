@@ -11,6 +11,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/$
 
 const SignYourselfPage = () => {
   const [step, setStep] = useState(1);
+  const [loading,setLoading]=useState(false)
   const [currentUser,setCurrentUser]=useState("")
   const [file, setFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -155,6 +156,7 @@ let signers=[
     signed:true
   }
 ] 
+setLoading(true)
     formDataToSend.append('document', file);
     
     formDataToSend.append('title', formData.title);
@@ -181,6 +183,7 @@ formDataToSend.append('status','completed')
       },500)
       } 
     } catch (error) {
+      setLoading(false)
       console.error('Error saving document:', error);
       if(error?.response?.data?.error){
         toast.error(error?.response?.data?.error,{containerId:"signyourself"})
@@ -709,7 +712,21 @@ formDataToSend.append('status','completed')
         </div>
       )}
     </div>
-   
+   {loading?(
+<>
+<div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50">
+  <div className="bg-white p-8 rounded-xl shadow-xl w-full max-w-2xl mx-4 text-center">
+    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+    <h3 className="text-2xl font-semibold text-gray-900 mb-2">
+      Attaching Document Elements
+    </h3>
+    <p className="text-gray-600">
+      Please wait while your elements are being attached to the document
+    </p>
+  </div>
+</div>
+</>
+   ):''}
    </>
   );
 };
