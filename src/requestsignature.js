@@ -210,7 +210,7 @@ try{
       })
       .then(() => {
         toast.success(`Signature request sent`,{containerId:"requestSignature"});
-      window.location.reload(true)
+      
        
       
       })
