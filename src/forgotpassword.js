@@ -19,10 +19,9 @@ let response=await axios.post(`${BASE_URL}/sendPasswordResetLinks`,{email})
 toast.success("Please check your email",{containerId:"forget-password"})
 setEmail("")
     }catch(e){
+      
       if(e?.response?.data?.error){
         toast.error(e?.response?.data?.error,{containerId:"forget-password"})
-      }else{
-        toast.error("Something went wrong please try again",{containerId:"forget-password"})
       }
     }
   }
