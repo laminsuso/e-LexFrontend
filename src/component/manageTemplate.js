@@ -117,15 +117,16 @@ export default function ManageTemplates({ requests, setRequests }) {
   );
 
 
-  console.log(recipients?.length)
-  console.log(elementsRecipients.length)
 
    if(recipients?.length==elementsRecipients?.length){
 toast.error("No more roles avaiable",{containerId:"manageTemplate"})
 return
    }else{
-
-     setRecipients([...recipients, { role: "", email: "" }]);
+    let availableRole = elementsRecipients.find(
+      (element) => !recipients.some((recipient) => recipient.role === element.recipientRole)
+    );
+  
+     setRecipients([...recipients, { role: availableRole.role, email: "" }]);
    }
   };
 
@@ -623,7 +624,7 @@ if(e?.response?.data?.error){
                         Role
                       </label>
                       <select
-                      disabled={recipient?.alreadyCreated}
+                      disabled={true}
                         className="w-full p-2 border rounded bg-white"
                         value={recipient.role}
                         onChange={(e) =>
@@ -633,11 +634,14 @@ if(e?.response?.data?.error){
                         <option value="" disabled>
                           Select Role
                         </option>
-                        {currentTemplate?.elements?.filter(u=>u?.recipientEmail?.length==0)?.map((val,i)=>{
+                        {currentTemplate?.elements.filter((value, index, self) => 
+    index === self.findIndex((t) => t.recipientEmail === value.recipientEmail)
+  )
+  .map((val, i) => {
+    return <option key={i.toString()} value={val?.recipientRole}>{val?.recipientRole}</option>
+  })
+}
 
-                          return <option key={i.toString()} value={val?.recipientRole}>{val?.recipientRole}</option>
-                         
-                        })}
                       </select>
                     </div>
                     <div>

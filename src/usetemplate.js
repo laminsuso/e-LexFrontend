@@ -506,34 +506,44 @@ console.log(newContact.phone)
       setstaticEmails((prev) => [...prev, newContact]);
       setShowAddContactModal(false);
       setNewContact({ email: "", name: "", phone: "" });
-      setRecipients((prev)=>{
-        let old=[...prev]
-        let findIndex=old.findIndex(u=>u.role==currentRole && u.email.length==0)
-        if(findIndex>=0){
-          old[findIndex]={
-            ...old[findIndex],
-            email:newContact.email
-          }
-        }else{
-          old=[...old,{
-            email: newContact.email,
-          role: currentRole,
-          }]
-        }
-        return old
-      })
+     
 
-   setSignatureElements((prev)=>{
-    let old=[...prev]
-    let findIndex=old.findIndex(u=>u.recipientRole==currentRole && u.recipientEmail.length==0)
-    if(findIndex){
-      old[findIndex]={
-        ...old[findIndex],
-        recipientEmail:newContact.email
-      }
-    }
-    return old
-   })
+      setRecipients((prev) => {
+        let old = [...prev];
+        let findIndex = old.findIndex(u => u.role == currentRole && u.email.length == 0);
+      
+        if (findIndex >= 0) {
+          old[findIndex] = {
+            ...old[findIndex],
+            email: newContact.email
+          };
+        } else {
+          old = [
+            ...old,
+            {
+              email: newContact.email,
+              role: currentRole
+            }
+          ];
+        }
+      
+        return old;
+      });
+      
+      setSignatureElements((prev) => {
+        let old = [...prev];
+        let findIndex = old.findIndex(u => u.recipientRole == currentRole && u.recipientEmail.length == 0);
+      
+        if (findIndex >= 0) {
+          old[findIndex] = {
+            ...old[findIndex],
+            recipientEmail: newContact.email
+          };
+        }
+      
+        return old;
+      });
+      
      
       setCurrentRole("")
     }
@@ -658,7 +668,7 @@ if(e?.response?.data?.error){
 
    
     let signers = signatureElements.map((val, i) => {
-      return { email: val.recipientEmail };
+      return { email: val.recipientEmail,role:val.recipientRole };
     });
     
    
@@ -667,6 +677,10 @@ if(e?.response?.data?.error){
         t.email === value.email
       ))
     );
+console.log('signers')
+console.log(signers)
+console.log(signatureElements)
+
 
   let newData={
     ...currentTemplate,
@@ -864,50 +878,58 @@ setShowSendConfirmation(true)
                           value={selectedSignerEmail}
                           onChange={(e) => {
                             const email = e.target.value;
-                            
+                        
                           
                             const recipientExists = recipients.some(
-                              (recipient) => recipient.email === email 
+                              (recipient) => recipient.email === email
                             );
-                          
+                        
                             if (recipientExists) {
                               toast.error("This email is already assigned a different role.", { containerId: "editTemplate" });
                             } else {
-                            
-
-              
-                              setRecipients((prev)=>{
-                                let old=[...prev]
+                          
+                              setRecipients((prev) => {
+                                let old = [...prev];
+                        
+                              
+                                const findIndex = old.findIndex(u => u.role === role.roleValue && u.email.length === 0);
+                        
+                                if (findIndex >= 0) {
                                 
-                                let findIndex=old.findIndex(u=>u.role==role.roleValue && u.email.length==0)
-                                if(findIndex>=0){
-                                  old[findIndex]={
+                                  old[findIndex] = {
                                     ...old[findIndex],
                                     email
-                                  }
-                                }else{
-                                  old=[...old,{ email: email,
+                                  };
+                                } else {
+                                 
+                                  old.push({
+                                    email: email,
                                     role: role.roleValue
-                                  }]
+                                  });
                                 }
-                                return old
-                              })
-
-                              setSignatureElements((prev)=>{
-                                let old=[...prev]
-                                let findIndex=old.findIndex(u=>u.recipientRole==role.roleValue && u.recipientEmail.length==0)
-                                if(findIndex){
-                                  old[findIndex]={
+                        
+                                return old;
+                              });
+                        
+                              
+                              setSignatureElements((prev) => {
+                                let old = [...prev];
+                        
+                              
+                                const findIndex = old.findIndex(u => u.recipientRole === role.roleValue && u.recipientEmail.length === 0);
+                        
+                                if (findIndex >= 0) {
+                            
+                                  old[findIndex] = {
                                     ...old[findIndex],
-                                    recipientEmail:email
-                                  }
+                                    recipientEmail: email
+                                  };
                                 }
-                                return old
-                               })
-                             
+                        
+                                return old;
+                              });
                             }
                           }}
-                          
                         >
                           <option value="">Select Email</option>
                           {staticEmails.map((contact) => (
