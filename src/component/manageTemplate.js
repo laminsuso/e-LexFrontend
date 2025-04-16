@@ -77,6 +77,8 @@ export default function ManageTemplates({ requests, setRequests }) {
 
   const handleBulkSend = (template) => {
     setCurrentTemplate(template);
+    console.log('template')
+    console.log(template)
     console.log('current template')
     console.log(template)
     console.log(template?.elements?.filter(u => u?.recipientEmail && u?.recipientEmail.trim() !== '').length > 0)
@@ -169,8 +171,7 @@ return
           }
         }
       }
-     
-      
+    
     let missing=recipients.find(u=>u.role.length==0 || u.email.length==0)
     if(missing){
       setLoading(false)
@@ -194,6 +195,7 @@ return
 
 let toSendTemplate=currentTemplate;
 let elements = toSendTemplate.elements;
+
 elements.forEach(element => {
   
   if (!element.recipientEmail) {
@@ -206,6 +208,7 @@ elements.forEach(element => {
     }
   }
 });
+
 
   
 //

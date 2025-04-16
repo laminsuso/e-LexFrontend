@@ -85,6 +85,11 @@ return;
       toast.error("Please select role",{containerId:"template"})
       return;
     }
+    let alreadySelected=signatureElements.find(u=>u.recipientRole==selectedRole)
+    if(alreadySelected){
+      toast.error("Role already assigned",{containerId:"template"})
+      return
+    }
     setSignatureElements((prev) =>
       prev.map((el) =>
         el.id === selectedElementId
@@ -436,7 +441,23 @@ const form = new FormData();
   };
   const handleAddRole = () => {
     if (newRole.trim()) {
-      setRoles([...roles, { id: uuidv4(), name: newRole.trim() }]);
+      setRoles((prev)=>{
+        let old;
+        if(prev.length>0){
+        old=[...prev]
+        }else{
+          old=[prev]
+        }
+        let already=old.find(u=>u.name==newRole.trim())
+        if(already){
+          toast.error("Role already created",{containerId:"requestSignature"})
+          return old
+        }else{
+         old=[...prev,{ id: uuidv4(), name: newRole.trim() }]
+          return old
+        }
+      })
+      
       setNewRole("");
       setShowRoleModal(false);
     }
