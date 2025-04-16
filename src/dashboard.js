@@ -8,6 +8,7 @@ import { BASE_URL } from "./baseUrl";
 import { useEffect, useState } from "react";
 export default function DashboardPage() {
   const [requests, setRequests] = useState([]);
+  const [currentEmail,setCurrentEmail]=useState("")
   const [loading,setLoading]=useState({
     needsignLoading:true,
     outforsignature:true,
@@ -25,6 +26,7 @@ export default function DashboardPage() {
         headers: { authorization: `Bearer ${token}` },
       });
       
+      setCurrentEmail(response.data.currentEmail)
       const transformedData = response.data.documents.map((doc) => {
         const createdAt = new Date(doc.createdAt);
 
@@ -213,7 +215,7 @@ export default function DashboardPage() {
           </Link>
         </div>
         <div className="grid lg:grid-cols-2 grid-cols-1 gap-[20px] bg-transparent">
-          <SignatureRequests loading={loading} requests={requests} setRequests={setRequests} />
+          <SignatureRequests currentEmail={currentEmail} loading={loading} requests={requests} setRequests={setRequests} />
           <SentForSignature
           loading={loading}
             requests={sentRequests}

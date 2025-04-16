@@ -117,7 +117,6 @@ export default function ManageTemplates({ requests, setRequests }) {
   );
 
 
-
    if(recipients?.length==elementsRecipients?.length){
 toast.error("No more roles avaiable",{containerId:"manageTemplate"})
 return
@@ -147,6 +146,32 @@ return
   const handleBulkSendSubmit = async () => {
     try {
   
+      const seenEmails = new Set();
+      const seenEmailsForRoles = new Map();
+  
+      
+      for (let recipient of recipients) {
+        const { email, role } = recipient;
+  
+        
+        if (email) {
+          if (seenEmails.has(email)) {
+           
+            if (seenEmailsForRoles.has(email) && seenEmailsForRoles.get(email) !== role) {
+              toast.error("Please assign a unique email to each role", {
+                containerId: "manageTemplate",
+              });
+              return; 
+            }
+          } else {
+            
+            seenEmailsForRoles.set(email, role);
+            seenEmails.add(email);
+          }
+        }
+      }
+  
+      
     let missing=recipients.find(u=>u.role.length==0 || u.email.length==0)
     if(missing){
       setLoading(false)
@@ -634,12 +659,17 @@ if(e?.response?.data?.error){
                         <option value="" disabled>
                           Select Role
                         </option>
-                        {currentTemplate?.elements.filter((value, index, self) => 
-    index === self.findIndex((t) => t.recipientEmail === value.recipientEmail)
+                        {currentTemplate?.elements
+  .filter((value, index, self) => 
+    index === self.findIndex((t) => (
+      t.recipientRole === value.recipientRole  
+    ))
   )
-  .map((val, i) => {
-    return <option key={i.toString()} value={val?.recipientRole}>{val?.recipientRole}</option>
-  })
+  .map((val, i) => (
+    <option key={i.toString()} value={val?.recipientRole}>
+      {val?.recipientRole}
+    </option>
+  ))
 }
 
                       </select>
@@ -663,15 +693,7 @@ if(e?.response?.data?.error){
                           }
                           placeholder="Enter email"
                         />
-                        {recipients.length > 1 && (
-                          <button
-                          disabled={recipient?.alreadyCreated}
-                            onClick={() => handleRemoveRecipient(index)}
-                            className="ml-2 bg-red-500 text-white px-3 rounded"
-                          >
-                            ×
-                          </button>
-                        )}
+                       
                       </div>
                     </div>
                   </div>

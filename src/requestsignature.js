@@ -144,7 +144,8 @@ setIsSocial(false)
   form.append("title", formData.title);
   form.append("elements", JSON.stringify(signatureElements));
  
-
+if(shareId.length==0){
+  
   const saveResponse = await axios.post(
     `${BASE_URL}/saveDocument`,
     form,
@@ -163,6 +164,21 @@ setIsSocial(false)
     },
     headers
   );
+}else{
+  
+  
+
+  await axios.post(
+    `${BASE_URL}/sendSignRequest`,
+    {
+      ...formData,
+      documentId: shareId,
+      elements: signatureElements,
+     
+    },
+    headers
+  );
+}
 
   toast.success(`Signature request sent`,{containerId:"requestSignature"});
   setFile(null);
@@ -242,7 +258,7 @@ form.append('signers',JSON.stringify(signers))
     setLoading(false)
     setIsSocial(false)
     const link = `${window.location.origin}/admin/request-signatures/sign-document/${shareId}?email=${email}`;
-  setShareId("")
+  
     if (navigator.share) {
       navigator.share({
         title: 'Sign Document',

@@ -4,7 +4,9 @@ import { Link } from "react-router-dom";
 import { BASE_URL } from "../baseUrl";
 import { toast, ToastContainer } from "react-toastify";
 
-export default function SignatureRequests({ requests, setRequests, loading }) {
+export default function SignatureRequests({ currentEmail,requests, setRequests, loading }) {
+  console.log("REQUESt")
+  console.log(requests)
   const [showSignersPopup, setShowSignersPopup] = useState(false);
   const [currentSigners, setCurrentSigners] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -109,7 +111,7 @@ export default function SignatureRequests({ requests, setRequests, loading }) {
 
                   <div>
                     <Link
-                      to={`/request-signatures/sign-document/${request._id}`}
+                      to={`/admin/request-signatures/sign-document/${request.id}?email=${currentEmail}`}
                       className="bg-[#002864] w-fit text-white py-1 px-4 rounded-[20px] gap-[10px] text-[14px] flex items-center justify-center"
                     >
                       <i className="fal fa-signature white-light-icon text-white text-[14px]"></i>
