@@ -173,6 +173,7 @@ setIsSocial(false)
     recipients: [],
   });
   setSignatureElements([]);
+  setLoading(false)
  window.location.reload(true) 
 }catch(e){
   if(e?.response?.data?.error){
@@ -204,6 +205,13 @@ try{
     email:val.recipientEmail
   }
  })
+
+
+signers = signers.filter((value, index, self) => 
+  index === self.findIndex((t) => (
+    t.email === value.email
+  ))
+);
 form.append('signers',JSON.stringify(signers))
   const saveResponse = await axios.post(
     `${BASE_URL}/saveDocument`,
@@ -221,7 +229,8 @@ form.append('signers',JSON.stringify(signers))
       .then(() => {
         toast.success(`Signature request sent`,{containerId:"requestSignature"});
       
-       
+        setLoading(false)
+        setIsSocial(false)
       
       })
       .catch((error) => {

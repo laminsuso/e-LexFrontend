@@ -584,6 +584,7 @@ console.log(e.message)
   let newData={
     ...currentTemplate,
     elements:signatureElements,
+    copyId:currentTemplate._id,
     signTemplate:true
   }
 
@@ -597,6 +598,7 @@ console.log(e.message)
     let restwo=await axios.post(`${BASE_URL}/sendSignRequest`,{documentId:res.data.doc._id,recipients:recipients},headers)
     toast.success("Document sent successfully!",{containerId:"editTemplate"});
     setShowAddSignerModal(false);
+    setLoading(false)
     window.location.href='/admin/template/create'
     setShowSendConfirmation(false);
    }catch(e){
@@ -654,15 +656,22 @@ if(e?.response?.data?.error){
     dataForm.append("document", newfile);
    
 
-    let signers=signatureElements.map((val,i)=>{
-      return {
-        email:val.recipientEmail
-      }
-    })
+   
+    let signers = signatureElements.map((val, i) => {
+      return { email: val.recipientEmail };
+    });
+    
+   
+    signers = signers.filter((value, index, self) => 
+      index === self.findIndex((t) => (
+        t.email === value.email
+      ))
+    );
 
   let newData={
     ...currentTemplate,
     elements:signatureElements,
+    copyId:currentTemplate._id,
     signTemplate:true,
     signers
   }

@@ -149,6 +149,7 @@ getUser()
 
   const handleSaveDocument = async () => {
     const formDataToSend = new FormData();
+    
 let signers=[
   {
     name:currentUser.name,
@@ -167,8 +168,9 @@ setLoading(true)
 formDataToSend.append('status','completed')
     formDataToSend.append('signers',JSON.stringify(signers))
     try {
-    
+      
       const token = localStorage.getItem('token');
+      
       const response = await axios.post(BASE_URL+'/saveDocument', formDataToSend, {
         headers: {
           authorization: `Bearer ${token}`,
@@ -177,6 +179,7 @@ formDataToSend.append('status','completed')
       console.log(response)
       console.log("response")
       if (response.status==200) {
+        setLoading(false)
        toast.success(response.data.message,{containerId:"signyourself"})
       setTimeout(()=>{
         setStep(1)

@@ -77,6 +77,9 @@ export default function ManageTemplates({ requests, setRequests }) {
 
   const handleBulkSend = (template) => {
     setCurrentTemplate(template);
+    console.log('current template')
+    console.log(template)
+    console.log(template?.elements?.filter(u => u?.recipientEmail && u?.recipientEmail.trim() !== '').length > 0)
     let recipients = template.elements
     .map((val, i) => ({
       email: val.recipientEmail,
@@ -208,6 +211,7 @@ let signers=recipients.map((val,i)=>{
 let newData={
 ...currentTemplate,
 elements,
+copyId:currentTemplate._id,
 signTemplate:true,
 
 }
@@ -596,7 +600,7 @@ if(e?.response?.data?.error){
           </div>
         )}
 
-        {showBulkSendModal && loading==false && currentTemplate ?(
+        {showBulkSendModal && loading==false && currentTemplate && currentTemplate?.elements?.filter(u=>u?.recipientEmail?.length==0)?.length>0 ?(
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white p-6 rounded-lg w-full max-w-2xl">
               <div className="flex items-center justify-between">
@@ -687,7 +691,7 @@ if(e?.response?.data?.error){
               </div>
             </div>
           </div>
-        ):showBulkSendModal && loading==false && currentTemplate && currentTemplate?.elements?.filter(u=>u?.recipientEmail?.length==0)?.length==0?(
+        ):showBulkSendModal && loading==false && currentTemplate && currentTemplate?.elements?.filter(u=>u?.recipientEmail?.length>0)?.length>0?(
 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div className="bg-white p-6 rounded-lg w-full max-w-2xl">
           <div className="flex items-center justify-between">

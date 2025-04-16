@@ -313,6 +313,7 @@ const form = new FormData();
         form,
         headers
       );
+      setLoading(false)
       toast.success(`Template saved successfully`, { containerId: "template" });
      window.location.reload(true)
       // setStep(1);
