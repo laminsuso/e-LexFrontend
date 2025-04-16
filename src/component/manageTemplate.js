@@ -146,31 +146,30 @@ return
   const handleBulkSendSubmit = async () => {
     try {
   
-      const seenEmails = new Set();
-      const seenEmailsForRoles = new Map();
+      const seenEmails = new Set(); 
+      const seenEmailsForRoles = new Map(); 
   
-      
       for (let recipient of recipients) {
         const { email, role } = recipient;
   
-        
         if (email) {
+         
           if (seenEmails.has(email)) {
-           
-            if (seenEmailsForRoles.has(email) && seenEmailsForRoles.get(email) !== role) {
+          
+            if (seenEmailsForRoles.has(email)) {
               toast.error("Please assign a unique email to each role", {
                 containerId: "manageTemplate",
               });
-              return; 
+              return;
             }
           } else {
             
-            seenEmailsForRoles.set(email, role);
             seenEmails.add(email);
+            seenEmailsForRoles.set(email, role); 
           }
         }
       }
-  
+     
       
     let missing=recipients.find(u=>u.role.length==0 || u.email.length==0)
     if(missing){
