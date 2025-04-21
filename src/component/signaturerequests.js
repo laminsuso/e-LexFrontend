@@ -27,9 +27,7 @@ export default function SignatureRequests({ currentEmail,requests, setRequests, 
       document.body.removeChild(link);
       URL.revokeObjectURL(blobUrl);
     } catch (e) {
-      toast.error("Unable to download file at the moment", {
-        containerId: "signatureRequests",
-      });
+    
     }
   };
 

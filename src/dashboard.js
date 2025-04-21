@@ -53,13 +53,7 @@ export default function DashboardPage() {
       })
     } catch (error) {
    
-      if (error?.response?.data?.error) {
-        toast.error(error?.response?.data?.error, { containerId: "dashboard" });
-      } else {
-        toast.error("Something went wrong please try again", {
-          containerId: "dashboard",
-        });
-      }
+    
     }finally{
       setLoading({
         draft:false,
@@ -89,13 +83,7 @@ export default function DashboardPage() {
         needsignLoading:false
       })
     } catch (e) {
-      if (e?.response?.data?.error) {
-        toast.error(e?.response?.data?.error, { containerId: "dashboard" });
-      } else {
-        toast.error("Something went wrong please try again", {
-          containerId: "dashboard",
-        });
-      }
+      
     }finally{
       setLoading({
         draft:false,
@@ -136,7 +124,7 @@ export default function DashboardPage() {
       })
       setSentRequests(transformedData);
     } catch (error) {
-      console.error("Error fetching signature requests:", error);
+      
     }finally{
       
       setLoading({
