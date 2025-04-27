@@ -12,15 +12,15 @@ function App() {
       <div className="w-full banner flex justify-center lg:px-[20px] py-[40px] px-[10px] items-center lg:flex-row flex-col">
         <div className="flex flex-col">
           <h1 className="lg:text-[46px] text-[24px] m-0 text-white">
-            Seal the Deal, Openly.<br />
+          Sign Documents Instantly, Anywhere.<br />
             Welcome to E-Lex Signature
           </h1>
           <h2 className="text-white lg:text-[27px] text-[18px]">
-            Your ultimate open source PDF E-Signature Solution.
+            Your ultimate PDF E-Signature Solution.
           </h2>
           <p className="text-white">
-            Transform the Way You Sign, Store, and Secure Your Documents.<br /> All in One Place - All for Free.<br />
-            Discover our new FREE plan with unlimited e-signatures!
+          Fast, secure, and legally binding electronic signatures for businesses and individuals.<br /> All in One Place.<br />
+          Track and manage documents across teams.
           </p>
           <div className="flex flex-col lg:flex-row gap-[20px] lg:items-center mt-[30px]">
             <Link to="/join" className="group shadow-lg w-fit flex gap-[20px] items-center bg-[#FF4040] font-bold py-[5px] cursor-pointer px-[20px] rounded-[15px] hover:rounded-[20px] text-white">
@@ -210,10 +210,10 @@ function App() {
           </svg>
         </div>
       </div>
-      <ImageText imgfst = {false} img = {fst} head = "Unlimited Free Signatures" cont = "Experience the freedom of limitless digital signing without ever reaching for your wallet."  />
-      <ImageText imgfst = {true} img = {scnd} head = "Invite and Collaborate for Free" cont = "Bring multiple people into the signing process at no extra cost. Close deals, not your wallet."  />
-      <ImageText imgfst = {false} img = {third} head = "Certification, Also Free" cont = "Every signed document comes with a detailed completion certificate, featuring access logs, all at zero cost."  />
-      <ImageText imgfst = {true} img = {fourth} head = "OpenSign™, Secure and Free" cont = "Your documents deserve a safe home. Store and organize them for free in our secure OpenSign™ Drive vault."  />
+      <ImageText imgfst = {false} img = {elexLanding1} head = "Unlimited Signatures" cont = "Experience the freedom of limitless digital signing."  />
+      <ImageText imgfst = {true} img = {scnd} head = "Invite and Collaborate for" cont = "Bring multiple people into the signing process at no extra cost. Close deals, not your wallet."  />
+      <ImageText imgfst = {false} img = {third} head = "Certification" cont = "Every signed document comes with a detailed completion certificate, featuring access logs."  />
+      <ImageText imgfst = {true} img = {fourth} head = "OpenSign™, Secure and Free" cont = "Your documents deserve a safe home. Store and organize them in our secure E-Lex Signature™ Drive vault."  />
     </div>
   );
 }
