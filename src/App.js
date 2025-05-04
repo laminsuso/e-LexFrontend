@@ -12,14 +12,14 @@ function App() {
       <div className="w-full banner flex justify-center lg:px-[20px] py-[40px] px-[10px] items-center lg:flex-row flex-col">
         <div className="flex flex-col">
           <h1 className="lg:text-[46px] text-[24px] m-0 text-white">
-          Sign Documents Instantly, Anywhere.<br />
-            Welcome to E-Lex Signature
+          Welcome to E-Lex Signature<br />
+          Sign Documents Instantly, Anywhere.
           </h1>
           <h2 className="text-white lg:text-[27px] text-[18px]">
             Your ultimate PDF E-Signature Solution.
           </h2>
           <p className="text-white">
-          Fast, secure, and legally binding electronic signatures for businesses and individuals.<br /> All in One Place.<br />
+          Fast, secure, electronic signatures for businesses and individuals. All in One Place.<br />
           Track and manage documents across teams.
           </p>
           <div className="flex flex-col lg:flex-row gap-[20px] lg:items-center mt-[30px]">
@@ -210,10 +210,10 @@ function App() {
           </svg>
         </div>
       </div>
-      <ImageText imgfst = {false} img = {elexLanding1} head = "Unlimited Signatures" cont = "Experience the freedom of limitless digital signing."  />
-      <ImageText imgfst = {true} img = {scnd} head = "Invite and Collaborate for" cont = "Bring multiple people into the signing process at no extra cost. Close deals, not your wallet."  />
+      <ImageText imgfst = {false} img = {fst} head = "Unlimited Signatures" cont = "Experience the freedom of limitless digital signing."  />
+      <ImageText imgfst = {true} img = {scnd} head = "Invite and Collaborate for" cont = "Bring multiple people into the signing process. Close deals."  />
       <ImageText imgfst = {false} img = {third} head = "Certification" cont = "Every signed document comes with a detailed completion certificate, featuring access logs."  />
-      <ImageText imgfst = {true} img = {fourth} head = "OpenSign™, Secure and Free" cont = "Your documents deserve a safe home. Store and organize them in our secure E-Lex Signature™ Drive vault."  />
+      <ImageText imgfst = {true} img = {fourth} head = "E-Lex™, Secure and and user friendly" cont = "Your documents deserve a safe home. Store and organize them in our secure E-Lex Signature™ Drive vault."  />
     </div>
   );
 }
