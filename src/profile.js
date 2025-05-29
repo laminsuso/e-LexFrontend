@@ -27,6 +27,7 @@ export default function Profile() {
     job_title: "",
     tagline: "",
     language: "",
+    verifyPhone:false
   });
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -56,6 +57,7 @@ export default function Profile() {
             setProfileImage(reader.result);
           };
           reader.readAsDataURL(file);
+          window.location.reload(true)
         } catch (e) {
           if (e?.response?.data?.error) {
             toast.error(e?.response?.data?.error, { containerId: "profile" });
@@ -94,6 +96,7 @@ export default function Profile() {
         phone: response.data.profile.phone,
         job_title: response.data.profile.job_title,
         tagline: response.data.profile.tagline,
+        verifyPhone:response?.data?.profile?.verifyPhone?response?.data?.profile?.verifyPhone:false
       });
       setProfileImage(response.data.profile.avatar);
     } catch (e) {
@@ -106,6 +109,25 @@ export default function Profile() {
       }
     }
   };
+
+
+  useEffect(() => {
+    console.log("Current verifyPhone:", tempData.verifyPhone);
+    console.log("Current verifyPhonr:", tempData.verifyPhonr);
+  }, [tempData]);
+
+
+
+  useEffect(() => {
+    if ("verifyPhonr" in tempData) {
+      setTempData(prev => ({
+        ...prev,
+        verifyPhone: prev.verifyPhonr,
+        verifyPhone: undefined
+      }));
+    }
+  }, []);
+
 
   const saveChanges = async () => {
     try {
@@ -470,6 +492,26 @@ if(e?.response?.data?.error){
                 </div>
               )}
             </div>
+            <div className="flex items-center space-x-2">
+  <input
+    type="checkbox"
+    id="verifyPhoneCheckbox"
+    checked={Boolean(tempData?.verifyPhone)}
+    onChange={(e) => {
+      setTempData({
+        ...tempData,
+        verifyPhone: e.target.checked
+      });
+    }}
+    disabled={!isEditing}
+    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+  />
+  <label htmlFor="verifyPhoneCheckbox" className="text-sm text-gray-700">
+    Send code via mobile
+  </label>
+</div>
+
+
           </div>
 
           <div className="flex gap-4 justify-end">
