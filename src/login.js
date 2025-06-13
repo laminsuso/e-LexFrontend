@@ -135,7 +135,7 @@ setFormData({
     const initGoogleAPI = () => {
       gapi.load('auth2', function () {
         gapi.auth2.init({
-          client_id: '281111470474-feflu0k26oo5etu6m8vjn334vh1rfds2.apps.googleusercontent.com', 
+          client_id: '87856424688-954frp0gjn2hpsntvg9u579if6qn5lll.apps.googleusercontent.com', 
         });
       });
     };
@@ -149,7 +149,8 @@ try{
   auth2.signIn().then(async(googleUser) => {
     const profile = googleUser.getBasicProfile();
 
-
+console.log("PROFILE")
+console.log(profile)  
    
    
     let response = await axios.post(`${BASE_URL}/googleLogin`,{email:profile.getEmail()});
@@ -166,12 +167,16 @@ try{
     navigate("/admin"); 
   
   }).catch(error => {
-   
+    console.log("TRY CATCH ERROR")
+   console.log(error)
+
   });
 
  
 
 }catch(e){
+  console.log("ERROR OF GAPI")
+  console.log(e.message)
 if(e?.response?.data?.error){
   toast.error(e?.response?.data?.error,{containerId:"loginContainer"})
 }else{
