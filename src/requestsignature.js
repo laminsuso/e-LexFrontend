@@ -655,7 +655,7 @@ return;
                   ref={fileInputRef}
                   hidden
                   onChange={handleFileChange}
-                  accept=".pdf,.png,.jpg,.jpeg,.docx"
+                  accept=".pdf"
                 />
               </div>
               <p className="text-sm text-gray-500 mt-1">
