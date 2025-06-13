@@ -137,15 +137,7 @@ export default function Draft({ requests, setRequests, loading }) {
     
     } catch (e) {
     
-      if (e?.response?.data?.error) {
-        toast.error(e?.response?.data?.error, {
-          containerId: "manageDrafts",
-        });
-      } else {
-        toast.error("Something went wrong please try again", {
-          containerId: "manageDrafts",
-        });
-      }
+  
     }
   };
 
