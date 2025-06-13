@@ -203,95 +203,88 @@ setIsSocial(false)
 }
 }
 
+const sendThroughShare = async (email) => {
+  try {
+    setLoading(true);
+    setIsSocial(true);
 
-const sendThroughShare=async(email)=>{
-try{
-  if(!shareId.length>0){
-    setLoading(true)
-    setIsSocial(true)
-    const token = localStorage.getItem("token");
-  const headers = { headers: { authorization: `Bearer ${token}` } };
+    let documentId = shareId;
 
-  const form = new FormData();
-  form.append("document", file);
-  form.append("title", formData.title);
-  form.append("elements", JSON.stringify(signatureElements));
- let signers=signatureElements.map((val,i)=>{
-  return {
-    email:val.recipientEmail
-  }
- })
+    // Only create/save document if shareId doesn't exist
+    if (!shareId || shareId.length === 0) {
+      const token = localStorage.getItem("token");
+      const headers = { headers: { authorization: `Bearer ${token}` } };
 
+      const form = new FormData();
+      form.append("document", file);
+      form.append("title", formData.title);
+      form.append("elements", JSON.stringify(signatureElements));
+      
+      let signers = signatureElements.map((val, i) => {
+        return {
+          email: val.recipientEmail
+        }
+      });
 
-signers = signers.filter((value, index, self) => 
-  index === self.findIndex((t) => (
-    t.email === value.email
-  ))
-);
-form.append('signers',JSON.stringify(signers))
-  const saveResponse = await axios.post(
-    `${BASE_URL}/saveDocument`,
-    form,
-    headers
-  );
-  const link = `${window.location.origin}/admin/request-signatures/sign-document/${saveResponse.data.doc._id}?email=${email}`;
-  setShareId(saveResponse.data.doc._id)
+      // Remove duplicate signers
+      signers = signers.filter((value, index, self) => 
+        index === self.findIndex((t) => (
+          t.email === value.email
+        ))
+      );
+      
+      form.append('signers', JSON.stringify(signers));
+      
+      const saveResponse = await axios.post(
+        `${BASE_URL}/saveDocument`,
+        form,
+        headers
+      );
+      
+      documentId = saveResponse.data.doc._id;
+      setShareId(documentId);
+    }
+
+    // Create the sharing link
+    const link = `${window.location.origin}/admin/request-signatures/sign-document/${documentId}?email=${email}`;
+
+    // Check if Web Share API is supported
     if (navigator.share) {
-      navigator.share({
+      await navigator.share({
         title: 'Sign Document',
         text: 'Please sign the document',
         url: link,
-      })
-      .then(() => {
-        toast.success(`Signature request sent`,{containerId:"requestSignature"});
-      
-        setLoading(false)
-        setIsSocial(false)
-      
-      })
-      .catch((error) => {
-        console.log(error.message)
-        toast.error("Failed to share the link", { containerId: "requestSignature" });
       });
-    } 
-  }else{
-    setLoading(false)
-    setIsSocial(false)
-    const link = `${window.location.origin}/admin/request-signatures/sign-document/${shareId}?email=${email}`;
-  
-    if (navigator.share) {
-      navigator.share({
-        title: 'Sign Document',
-        text: 'Please sign the document',
-        url: link,
-      })
-      .then(() => {
-        toast.success(`Signature request sent`,{containerId:"requestSignature"});
       
-       
-      
-      })
-      .catch((error) => {
-        console.log(error.message)
-        toast.error("Failed to share the link", { containerId: "requestSignature" });
-      });
-    } 
+      toast.success(`Signature request sent`, { containerId: "requestSignature" });
+    } else {
+      // Fallback for browsers that don't support Web Share API
+      // Copy to clipboard or show the link
+      await navigator.clipboard.writeText(link);
+      toast.success(`Link copied to clipboard`, { containerId: "requestSignature" });
+    }
+
+  } catch (error) {
+    console.error('Share error:', error);
+    
+    if (error.name === 'AbortError') {
+      // User cancelled the share dialog - this is not an error
+      console.log('User cancelled share');
+    } else if (error?.response?.data?.error) {
+      console.log("CANT SHARE")
+      console.log(JSON.stringify(error))
+      toast.error(error.response.data.error, { containerId: "requestSignature" });
+    } else {
+      console.log("CANT SHARE")
+      console.log(JSON.stringify(error))
+      toast.error("Something went wrong, please try again", { containerId: "requestSignature" });
+    }
+  } finally {
+    // Always reset loading states in finally block
+    setLoading(false);
+    setIsSocial(false);
   }
- 
-
-  
-
-}catch(e){
-  setLoading(false)
-setIsSocial(false)
-  if(e?.response?.data?.error){
-    toast.error(e?.response?.data?.error,{containerId:"requestSignature"})
-  }else{
-    toast.error("Something went wrong pleae try again",{containerId:"requestSignature"})
-  }
-
-}
-}
+};
 
 
   const removeRecipient = (index) => {
