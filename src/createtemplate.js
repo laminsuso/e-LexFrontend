@@ -615,7 +615,7 @@ const CreateTemplate = () => {
                     ref={fileInputRef}
                     hidden
                     onChange={handleFileChange}
-                    accept=".pdf,.png,.jpg,.jpeg"
+                    accept=".pdf"
                   />
                 </div>
                 <p className="text-sm text-gray-500 mt-1">

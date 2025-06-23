@@ -31,16 +31,19 @@ const recipientColors = [
 ];
 
 const UseTemplate = () => {
+  const [touchStartPos, setTouchStartPos] = useState({ x: 0, y: 0 });
+  const [isDraggingTool, setIsDraggingTool] = useState(false);
+  const [draggedToolType, setDraggedToolType] = useState(null);
   const params = useParams();
   let id = params.documentId;
-  const [loading,setLoading]=useState(false)
+  const [loading, setLoading] = useState(false);
   const [showAddSignerModal, setShowAddSignerModal] = useState(true);
   const [showAddContactModal, setShowAddContactModal] = useState(false);
-  const [currentRole,setCurrentRole]=useState("")
+  const [currentRole, setCurrentRole] = useState("");
   const [showSendConfirmation, setShowSendConfirmation] = useState(false);
-  const [currentTemplate,setCurrentTemplate]=useState()
-  const [selectRoles,setSelectRoles]=useState([])
-  const [viewTemplateId,setViewTemplateId]=useState("")
+  const [currentTemplate, setCurrentTemplate] = useState();
+  const [selectRoles, setSelectRoles] = useState([]);
+  const [viewTemplateId, setViewTemplateId] = useState("");
   const [recipients, setRecipients] = useState([]);
   const [showAddRecipientModal, setShowAddRecipientModal] = useState(false);
   const [dummyEmails, setDummyEmails] = useState([
@@ -65,6 +68,7 @@ const UseTemplate = () => {
     redirectUrl: "",
     isTemplate: true,
   });
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [signatureElements, setSignatureElements] = useState([]);
   const [numPages, setNumPages] = useState(null);
   const [draggedElement, setDraggedElement] = useState(null);
@@ -108,14 +112,107 @@ const UseTemplate = () => {
     ];
     setSignatureElements(defaultElements);
   }, []);
+  useEffect(() => {
+    if (draggedElement) {
+      document.body.style.overflow = "hidden";
+      document.body.style.touchAction = "none";
+      const container = containerRef.current;
+      if (container) {
+        container.style.overflow = "hidden";
+        container.style.touchAction = "none";
+      }
+    } else {
+      document.body.style.overflow = "auto";
+      document.body.style.touchAction = "auto";
+      const container = containerRef.current;
+      if (container) {
+        container.style.overflow = "auto";
+        container.style.touchAction = "auto";
+      }
+    }
 
+    return () => {
+      document.body.style.overflow = "auto";
+      document.body.style.touchAction = "auto";
+      const container = containerRef.current;
+      if (container) {
+        container.style.overflow = "auto";
+        container.style.touchAction = "auto";
+      }
+    };
+  }, [draggedElement]);
+  const handleToolTouchStart = (type) => (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const touch = e.touches[0];
+    setTouchStartPos({
+      x: touch.clientX,
+      y: touch.clientY,
+    });
+    setDraggedToolType(type);
+    setIsDraggingTool(true);
+
+    document.body.style.overflow = "hidden";
+    document.body.style.touchAction = "none";
+  };
+
+  const handleToolTouchMove = (e) => {
+    if (!isDraggingTool || !draggedToolType) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const touch = e.touches[0];
+    const deltaX = Math.abs(touch.clientX - touchStartPos.x);
+    const deltaY = Math.abs(touch.clientY - touchStartPos.y);
+
+    if (deltaX > 10 || deltaY > 10) {
+    }
+  };
+
+  const handleToolTouchEnd = (e) => {
+    if (!isDraggingTool || !draggedToolType) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const touch = e.changedTouches[0];
+    const { x, y } = getContainerPosition(touch.clientX, touch.clientY);
+
+    const pdfContainer = document.querySelector(".pdf-container");
+    const rect = pdfContainer?.getBoundingClientRect();
+
+    if (
+      rect &&
+      touch.clientX >= rect.left &&
+      touch.clientX <= rect.right &&
+      touch.clientY >= rect.top &&
+      touch.clientY <= rect.bottom
+    ) {
+      if (
+        draggedToolType === FIELD_TYPES.DROPDOWN ||
+        draggedToolType === FIELD_TYPES.RADIO
+      ) {
+        setCurrentTool(draggedToolType);
+        setShowOptionsModal(true);
+        setDropPosition({ x, y });
+      } else {
+        createPlaceholder(draggedToolType, x, y, {});
+      }
+    }
+
+    setIsDraggingTool(false);
+    setDraggedToolType(null);
+    document.body.style.overflow = "auto";
+    document.body.style.touchAction = "auto";
+  };
   const handleAssignmentSubmit = () => {
     setSignatureElements((prev) =>
       prev.map((el) =>
         el.id === selectedElementId
-          ? { ...el, 
-            recipientEmail: selectedEmail, 
-            recipientRole: selectedRole }
+          ? {
+              ...el,
+              recipientEmail: selectedEmail,
+              recipientRole: selectedRole,
+            }
           : el
       )
     );
@@ -143,7 +240,7 @@ const UseTemplate = () => {
       value: "",
       placeholderText: getPlaceholderText(type, options),
       isPlaceholder: true,
-     recipientEmail:
+      recipientEmail:
         selectedRecipientIndex !== null
           ? recipients[selectedRecipientIndex].email
           : "",
@@ -205,10 +302,6 @@ const UseTemplate = () => {
     fetchContactBook();
   }, []);
 
-
-
-
-
   const fetchContactBook = async () => {
     try {
       let token = localStorage.getItem("token");
@@ -216,7 +309,7 @@ const UseTemplate = () => {
         headers: { authorization: `Bearer ${token}` },
       });
       setstaticEmails(res.data.contactBooks);
-      setDummyEmails(res.data.contactBooks)
+      setDummyEmails(res.data.contactBooks);
     } catch (e) {
       if (e?.response?.data?.error) {
         toast.error(e?.response?.data?.error, { containerId: "editTemplate" });
@@ -227,7 +320,44 @@ const UseTemplate = () => {
       }
     }
   };
+  const handleElementTouchStart = (e, id) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const touch = e.touches[0];
+    const { x, y } = getContainerPosition(touch.clientX, touch.clientY);
+    const element = signatureElements.find((el) => el.id === id);
+    setPositionOffset({
+      x: x - element.x,
+      y: y - element.y,
+    });
+    setDraggedElement(id);
+  };
 
+  const handleElementTouchMove = (e) => {
+    if (!draggedElement) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const touch = e.touches[0];
+    const { x: cursorX, y: cursorY } = getContainerPosition(
+      touch.clientX,
+      touch.clientY
+    );
+    setSignatureElements((prev) =>
+      prev.map((el) =>
+        el.id === draggedElement
+          ? {
+              ...el,
+              x: cursorX - positionOffset.x,
+              y: cursorY - positionOffset.y,
+            }
+          : el
+      )
+    );
+  };
+
+  const handleElementTouchEnd = () => {
+    setDraggedElement(null);
+  };
   const convertPDFToScreenCoordinates = (elements, containerWidth) => {
     const pdfWidth = 800;
     const scaleFactor = containerWidth / pdfWidth;
@@ -244,27 +374,27 @@ const UseTemplate = () => {
     try {
       let token = localStorage.getItem("token");
       const res = await axios.get(`${BASE_URL}/getSpecificDoc/${id}`);
-      setCurrentTemplate(res.data.doc)
-      console.log("DOCS")
-      console.log(res)
+      setCurrentTemplate(res.data.doc);
+      console.log("DOCS");
+      console.log(res);
       const containerWidth = containerRef.current?.offsetWidth || 800;
       setFile(res.data.doc.file);
-      let transformedRecipients=res.data.doc.elements.map((val,i)=>{
-        let data={
-          email:val.recipientEmail,
-          role:val.recipientRole
-        }
-       return data
-      })
-let transformedRoles=transformedRecipients.map((val,i)=>{
-  return {
-    roleName:val.role,
-    roleValue:val.role
-  }
-})
+      let transformedRecipients = res.data.doc.elements.map((val, i) => {
+        let data = {
+          email: val.recipientEmail,
+          role: val.recipientRole,
+        };
+        return data;
+      });
+      let transformedRoles = transformedRecipients.map((val, i) => {
+        return {
+          roleName: val.role,
+          roleValue: val.role,
+        };
+      });
 
-setSelectRoles(transformedRoles)
-      setRecipients(transformedRecipients)
+      setSelectRoles(transformedRoles);
+      setRecipients(transformedRecipients);
       const elementsWithPlaceholders = convertPDFToScreenCoordinates(
         res.data.doc.elements,
         containerWidth
@@ -349,12 +479,10 @@ setSelectRoles(transformedRoles)
         containerWidth
       ).map((element) => ({
         ...element,
-        
-recipientEmail: element.
-recipientEmail || "",
-       
-recipientRole: element.
-recipientRole|| "",
+
+        recipientEmail: element.recipientEmail || "",
+
+        recipientRole: element.recipientRole || "",
       }));
 
       let token = localStorage.getItem("token");
@@ -411,14 +539,18 @@ recipientRole|| "",
           e.stopPropagation();
           handleMouseDown(e, element.id);
         }}
+        onTouchStart={(e) => {
+          e.stopPropagation();
+          handleElementTouchStart(e, element.id);
+        }}
       >
         <div className="text-xs text-gray-500">{element.placeholderText}</div>
         {element.value && <div className="text-sm mt-1">{element.value}</div>}
         {element.recipientEmail && (
           <div className="text-xs mt-1">
-          {element.recipientEmail && <div>{element.recipientEmail}</div>}
-          {element.recipientRole && <div>({element.recipientRole})</div>}
-        </div>
+            {element.recipientEmail && <div>{element.recipientEmail}</div>}
+            {element.recipientRole && <div>({element.recipientRole})</div>}
+          </div>
         )}
         <button
           onClick={(e) => {
@@ -449,15 +581,34 @@ recipientRole|| "",
       [FIELD_TYPES.IMAGE]: "Image",
       [FIELD_TYPES.EMAIL]: "Email",
     };
-
+  
     return (
       <div
         key={type}
-        className="p-2 bg-gray-100 hover:bg-gray-200 text-sm cursor-move rounded mb-1"
-        draggable
+        className={`p-2 bg-gray-100 hover:bg-gray-200 text-sm cursor-move rounded mb-1 select-none ${
+          isDraggingTool && draggedToolType === type ? 'opacity-50' : ''
+        }`}
+        
+        // Always enable draggable for desktop
+        draggable={true} 
         onDragStart={handleToolDragStart(type)}
+        
+        // Only add touch events on mobile
+        onTouchStart={isMobile ? handleToolTouchStart(type) : undefined}
+        onTouchMove={isMobile ? handleToolTouchMove : undefined}
+        onTouchEnd={isMobile ? handleToolTouchEnd : undefined}
+        
+        style={{
+          touchAction: isMobile ? 'none' : 'auto', 
+          userSelect: 'none',
+        }}
       >
         {toolLabels[type]}
+        {isMobile && (
+          <span className="text-xs text-gray-500 block">
+            Tap and drag to PDF
+          </span>
+        )}
       </div>
     );
   };
@@ -479,264 +630,301 @@ recipientRole|| "",
   };
 
   const handleAddContact = async () => {
-   try{
-    const phoneRegex = /^(?:\+?[1-9]\d{9,14}|0\d{9,14})$/;
-console.log(newContact.phone)
-    if(newContact.email.length==0){
-     
-      toast.error("Please enter email",{containerId:"editTemplate"})
-      return;
-    }else if(newContact.name.length==0){
-   
-      toast.error("Please enter name",{containerId:"editTemplate"})
-      return;
-    }else if(newContact.phone.length==0){
-      
-      toast.error("Please enter phone",{containerId:"editTemplate"})
-      return;
-    }else if (!phoneRegex.test(newContact.phone)) {
-     
-      toast.error("Please enter a valid phone number", { containerId: "editTemplate" });
-      return;
-    }
-    if (newContact.email) {
-     
-      setstaticEmails((prev) => [...prev, newContact]);
-      setShowAddContactModal(false);
-      setNewContact({ email: "", name: "", phone: "" });
-     
-
-      setRecipients((prev) => {
-        let old = [...prev];
-        let findIndex = old.findIndex(u => u.role == currentRole && u.email.length == 0);
-      
-        if (findIndex >= 0) {
-          old[findIndex] = {
-            ...old[findIndex],
-            email: newContact.email
-          };
-        } else {
-          old = [
-            ...old,
-            {
-              email: newContact.email,
-              role: currentRole
-            }
-          ];
-        }
-      
-        return old;
-      });
-      
-      setSignatureElements((prev) => {
-        let old = [...prev];
-        let findIndex = old.findIndex(u => u.recipientRole == currentRole && u.recipientEmail.length == 0);
-      
-        if (findIndex >= 0) {
-          old[findIndex] = {
-            ...old[findIndex],
-            recipientEmail: newContact.email
-          };
-        }
-      
-        return old;
-      });
-      
-     
-      setCurrentRole("")
-    }
-   }catch(e){
-console.log(e.message)
-   }
-  };
-
-  const handleSendDocument = async() => {
-   try{
-   
-    let token=localStorage.getItem('token')
-    let headers={
-      headers:{
-        authorization:`Bearer ${token}`
+    try {
+      const phoneRegex = /^(?:\+?[1-9]\d{9,14}|0\d{9,14})$/;
+      console.log(newContact.phone);
+      if (newContact.email.length == 0) {
+        toast.error("Please enter email", { containerId: "editTemplate" });
+        return;
+      } else if (newContact.name.length == 0) {
+        toast.error("Please enter name", { containerId: "editTemplate" });
+        return;
+      } else if (newContact.phone.length == 0) {
+        toast.error("Please enter phone", { containerId: "editTemplate" });
+        return;
+      } else if (!phoneRegex.test(newContact.phone)) {
+        toast.error("Please enter a valid phone number", {
+          containerId: "editTemplate",
+        });
+        return;
       }
+      if (newContact.email) {
+        setstaticEmails((prev) => [...prev, newContact]);
+        setShowAddContactModal(false);
+        setNewContact({ email: "", name: "", phone: "" });
+
+        setRecipients((prev) => {
+          let old = [...prev];
+          let findIndex = old.findIndex(
+            (u) => u.role == currentRole && u.email.length == 0
+          );
+
+          if (findIndex >= 0) {
+            old[findIndex] = {
+              ...old[findIndex],
+              email: newContact.email,
+            };
+          } else {
+            old = [
+              ...old,
+              {
+                email: newContact.email,
+                role: currentRole,
+              },
+            ];
+          }
+
+          return old;
+        });
+
+        setSignatureElements((prev) => {
+          let old = [...prev];
+          let findIndex = old.findIndex(
+            (u) =>
+              u.recipientRole == currentRole && u.recipientEmail.length == 0
+          );
+
+          if (findIndex >= 0) {
+            old[findIndex] = {
+              ...old[findIndex],
+              recipientEmail: newContact.email,
+            };
+          }
+
+          return old;
+        });
+
+        setCurrentRole("");
+      }
+    } catch (e) {
+      console.log(e.message);
     }
-    let isEmpty=recipients.find(u=>u.email.length==0)
-    if(isEmpty){
-      toast.error('Please assign email to all roles',{containerId:"editTemplate"})
-      return
-    }
-
-    setLoading(true)
-   
-
-
-    let form=new FormData();
-    form.append("document", currentTemplate.file);
-    form.append("elements", JSON.stringify(signatureElements));
-   form.append('documentId',currentTemplate._id)
-  
-    const embedResponse = await axios.post(
-      `${BASE_URL}/embedElementsInPDF`,
-      form,
-      headers
-    );
-   
-    const blob = new Blob([embedResponse.data], { type: "application/pdf" });
-    const newfile = new File([blob], `signedDocument-${currentTemplate._id}`, {
-      type: "application/pdf",
-    });
-    const dataForm = new FormData();
-    dataForm.append("document", newfile);
-   
-
-    
-  let newData={
-    ...currentTemplate,
-    elements:signatureElements,
-    copyId:currentTemplate._id,
-    signTemplate:true
-  }
-
-  
-  let res=await axios.post(`${BASE_URL}/createSignTemplate`,newData)
- 
-  
-  let edited=await axios.patch(`${BASE_URL}/editDocument/${res.data.doc._id}`,dataForm,headers)
-
-    
-    let restwo=await axios.post(`${BASE_URL}/sendSignRequest`,{documentId:res.data.doc._id,recipients:recipients},headers)
-    toast.success("Document sent successfully!",{containerId:"editTemplate"});
-    setShowAddSignerModal(false);
-    setLoading(false)
-    window.location.href='/admin/template/create'
-    setShowSendConfirmation(false);
-   }catch(e){
-    setLoading(false)
-    console.log(e.message)
-if(e?.response?.data?.error){
-  toast.error(e?.response?.data?.error,{containerId:"editTemplate"})
-}else{
-  toast.error("Something went wrong please try again",{containerId:"editTemplate"})
-}
-   }
   };
-
-
-  const createTemplateView=async()=>{
-    let isEmpty=recipients.find(u=>u.email.length==0)
-    if(isEmpty){
-      toast.error('Please assign email to all roles',{containerId:"editTemplate"})
-      return
-    }
-   
-    try{
-      setCurrentTemplate((prev)=>{
-        let old={...prev}
-        old={
-          ...old,
-          elements:signatureElements
-        }
-        return old;
-      })
-     
+  const [containerDimensions, setContainerDimensions] = useState({
+    width: 800,
+    height: 0,
+  });
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+      if (containerRef.current) {
+        setContainerDimensions({
+          width: containerRef.current.clientWidth,
+          height: containerRef.current.clientHeight,
+        });
+      }
+    };
+  });
+  const handleSendDocument = async () => {
+    try {
       let token = localStorage.getItem("token");
       let headers = {
         headers: {
           authorization: `Bearer ${token}`,
         },
       };
-      
-    let form=new FormData();
-    form.append("document", currentTemplate.file);
-    form.append("elements", JSON.stringify(signatureElements));
-   form.append('documentId',currentTemplate._id)
-  
-    const embedResponse = await axios.post(
-      `${BASE_URL}/embedElementsInPDF`,
-      form,
-      headers
-    );
-   
-    const blob = new Blob([embedResponse.data], { type: "application/pdf" });
-    const newfile = new File([blob], `signedDocument-${currentTemplate._id}`, {
-      type: "application/pdf",
-    });
-    const dataForm = new FormData();
-    dataForm.append("document", newfile);
-   
+      let isEmpty = recipients.find((u) => u.email.length == 0);
+      if (isEmpty) {
+        toast.error("Please assign email to all roles", {
+          containerId: "editTemplate",
+        });
+        return;
+      }
 
-   
-    let signers = signatureElements.map((val, i) => {
-      return { email: val.recipientEmail,role:val.recipientRole };
-    });
-    
-   
-    signers = signers.filter((value, index, self) => 
-      index === self.findIndex((t) => (
-        t.email === value.email
-      ))
-    );
-console.log('signers')
-console.log(signers)
-console.log(signatureElements)
+      setLoading(true);
 
+      let form = new FormData();
+      form.append("document", currentTemplate.file);
+      form.append("elements", JSON.stringify(signatureElements));
+      form.append("documentId", currentTemplate._id);
 
-  let newData={
-    ...currentTemplate,
-    elements:signatureElements,
-    copyId:currentTemplate._id,
-    signTemplate:true,
-    signers
-  }
+      const embedResponse = await axios.post(
+        `${BASE_URL}/embedElementsInPDF`,
+        form,
+        headers
+      );
 
-  
-  let res=await axios.post(`${BASE_URL}/createSignTemplate`,newData)
- 
-  
-  let edited=await axios.patch(`${BASE_URL}/editDocument/${res.data.doc._id}`,dataForm,headers)
+      const blob = new Blob([embedResponse.data], { type: "application/pdf" });
+      const newfile = new File(
+        [blob],
+        `signedDocument-${currentTemplate._id}`,
+        {
+          type: "application/pdf",
+        }
+      );
+      const dataForm = new FormData();
+      dataForm.append("document", newfile);
 
-    
-setViewTemplateId(res.data.doc._id)
-setShowSendConfirmation(true)
-    }catch(e){
-      if(e?.response?.data?.error){
-        toast.error(e?.response?.data?.error,{containerId:"editTemplate"})
-      }else{
-        toast.error("Something went wrong please try again",{containerId:"editTemplate"})
+      let newData = {
+        ...currentTemplate,
+        elements: signatureElements,
+        copyId: currentTemplate._id,
+        signTemplate: true,
+      };
+
+      let res = await axios.post(`${BASE_URL}/createSignTemplate`, newData);
+
+      let edited = await axios.patch(
+        `${BASE_URL}/editDocument/${res.data.doc._id}`,
+        dataForm,
+        headers
+      );
+
+      let restwo = await axios.post(
+        `${BASE_URL}/sendSignRequest`,
+        { documentId: res.data.doc._id, recipients: recipients },
+        headers
+      );
+      toast.success("Document sent successfully!", {
+        containerId: "editTemplate",
+      });
+      setShowAddSignerModal(false);
+      setLoading(false);
+      window.location.href = "/admin/template/create";
+      setShowSendConfirmation(false);
+    } catch (e) {
+      setLoading(false);
+      console.log(e.message);
+      if (e?.response?.data?.error) {
+        toast.error(e?.response?.data?.error, { containerId: "editTemplate" });
+      } else {
+        toast.error("Something went wrong please try again", {
+          containerId: "editTemplate",
+        });
       }
     }
-  }
+  };
+
+  const createTemplateView = async () => {
+    let isEmpty = recipients.find((u) => u.email.length == 0);
+    if (isEmpty) {
+      toast.error("Please assign email to all roles", {
+        containerId: "editTemplate",
+      });
+      return;
+    }
+
+    try {
+      setCurrentTemplate((prev) => {
+        let old = { ...prev };
+        old = {
+          ...old,
+          elements: signatureElements,
+        };
+        return old;
+      });
+
+      let token = localStorage.getItem("token");
+      let headers = {
+        headers: {
+          authorization: `Bearer ${token}`,
+        },
+      };
+
+      let form = new FormData();
+      form.append("document", currentTemplate.file);
+      form.append("elements", JSON.stringify(signatureElements));
+      form.append("documentId", currentTemplate._id);
+
+      const embedResponse = await axios.post(
+        `${BASE_URL}/embedElementsInPDF`,
+        form,
+        headers
+      );
+
+      const blob = new Blob([embedResponse.data], { type: "application/pdf" });
+      const newfile = new File(
+        [blob],
+        `signedDocument-${currentTemplate._id}`,
+        {
+          type: "application/pdf",
+        }
+      );
+      const dataForm = new FormData();
+      dataForm.append("document", newfile);
+
+      let signers = signatureElements.map((val, i) => {
+        return { email: val.recipientEmail, role: val.recipientRole };
+      });
+
+      signers = signers.filter(
+        (value, index, self) =>
+          index === self.findIndex((t) => t.email === value.email)
+      );
+      console.log("signers");
+      console.log(signers);
+      console.log(signatureElements);
+
+      let newData = {
+        ...currentTemplate,
+        elements: signatureElements,
+        copyId: currentTemplate._id,
+        signTemplate: true,
+        signers,
+      };
+
+      let res = await axios.post(`${BASE_URL}/createSignTemplate`, newData);
+
+      let edited = await axios.patch(
+        `${BASE_URL}/editDocument/${res.data.doc._id}`,
+        dataForm,
+        headers
+      );
+
+      setViewTemplateId(res.data.doc._id);
+      setShowSendConfirmation(true);
+    } catch (e) {
+      if (e?.response?.data?.error) {
+        toast.error(e?.response?.data?.error, { containerId: "editTemplate" });
+      } else {
+        toast.error("Something went wrong please try again", {
+          containerId: "editTemplate",
+        });
+      }
+    }
+  };
 
   const copyDocumentLink = (email) => {
-    navigator.clipboard.writeText(`${window.location.origin}/admin/request-signatures/sign-document/${viewTemplateId}?email=${email}`);
-    toast.success("Link copied to clipboard",{containerId:"editTemplate"});
+    navigator.clipboard.writeText(
+      `${window.location.origin}/admin/request-signatures/sign-document/${viewTemplateId}?email=${email}`
+    );
+    toast.success("Link copied to clipboard", { containerId: "editTemplate" });
   };
   const shareLink = (email) => {
     const link = `${window.location.origin}/admin/request-signatures/sign-document/${viewTemplateId}?email=${email}`;
-  
+
     if (navigator.share) {
-      navigator.share({
-        title: 'Sign Document',
-        text: 'Please sign the document',
-        url: link,
-      })
-      .then(() => {
-        toast.success("Link shared successfully", { containerId: "editTemplate" });
-      })
-      .catch((error) => {
-        toast.error("Failed to share the link", { containerId: "editTemplate" });
-      });
-    } else {
-      
-      navigator.clipboard.writeText(link)
+      navigator
+        .share({
+          title: "Sign Document",
+          text: "Please sign the document",
+          url: link,
+        })
         .then(() => {
-          toast.success("Link copied to clipboard", { containerId: "editTemplate" });
+          toast.success("Link shared successfully", {
+            containerId: "editTemplate",
+          });
         })
         .catch((error) => {
-          toast.error("Failed to copy the link", { containerId: "editTemplate" });
+          toast.error("Failed to share the link", {
+            containerId: "editTemplate",
+          });
+        });
+    } else {
+      navigator.clipboard
+        .writeText(link)
+        .then(() => {
+          toast.success("Link copied to clipboard", {
+            containerId: "editTemplate",
+          });
+        })
+        .catch((error) => {
+          toast.error("Failed to copy the link", {
+            containerId: "editTemplate",
+          });
         });
     }
   };
-  
 
   const removeRecipient = (index) => {
     setRecipients(recipients.filter((_, i) => i !== index));
@@ -750,11 +938,13 @@ setShowSendConfirmation(true)
   return (
     <>
       <ToastContainer containerId={"editTemplate"} />
-      <div className="admin-content">
+      <div className="admin-content h-full">
         <div
-          className="flex h-screen bg-gray-100"
+          className="flex min-h-screen lg:flex-row flex-col gap-[10px] bg-gray-100"
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
+          onTouchMove={handleElementTouchMove}
+          onTouchEnd={handleElementTouchEnd}
           onDrop={handleDocumentDrop}
           onDragOver={(e) => e.preventDefault()}
           ref={containerRef}
@@ -762,7 +952,7 @@ setShowSendConfirmation(true)
           <div className="flex-1 p-4 overflow-auto relative">
             <button
               onClick={() => {
-                setShowAddSignerModal(true)
+                setShowAddSignerModal(true);
               }}
               className="absolute top-4 right-4 z-50 bg-[#002864] text-white px-6 py-2 rounded-[20px] shadow-lg "
             >
@@ -773,7 +963,11 @@ setShowSendConfirmation(true)
               <Document file={file} onLoadSuccess={onLoadSuccess}>
                 <Page
                   pageNumber={1}
-                  width={800}
+                  width={
+                    isMobile
+                      ? window.innerWidth - 32
+                      : Math.min(containerDimensions.width, 800)
+                  }
                   renderAnnotationLayer={false}
                   renderTextLayer={false}
                 />
@@ -783,7 +977,7 @@ setShowSendConfirmation(true)
             {signatureElements.map((element) => renderFieldPreview(element))}
           </div>
 
-          <div className="w-80 bg-white p-4 shadow-lg overflow-y-auto">
+          <div className="lg:w-80 w-full bg-white p-4 shadow-lg overflow-y-auto lg:max-h-screen max-h-[300px]">
             <div className="mb-6">
               <h3 className="text-xl font-bold mb-4">Recipients</h3>
               {recipients.length > 0 ? (
@@ -866,7 +1060,7 @@ setShowSendConfirmation(true)
                     X
                   </div>
                 </div>
-                <div  className="flex flex-col bg-[#dedede] px-[20px] py-[30px] border border-gray-400 rounded-[20px] gap-2 my-[40px]">
+                <div className="flex flex-col bg-[#dedede] px-[20px] py-[30px] border border-gray-400 rounded-[20px] gap-2 my-[40px]">
                   {selectRoles?.map((role, index) => (
                     <div key={index}>
                       <label className="text-[12px]">{role.roleName}</label>
@@ -876,54 +1070,57 @@ setShowSendConfirmation(true)
                           value={selectedSignerEmail}
                           onChange={(e) => {
                             const email = e.target.value;
-                        
-                          
+
                             const recipientExists = recipients.some(
                               (recipient) => recipient.email === email
                             );
-                        
+
                             if (recipientExists) {
-                              toast.error("This email is already assigned a different role.", { containerId: "editTemplate" });
+                              toast.error(
+                                "This email is already assigned a different role.",
+                                { containerId: "editTemplate" }
+                              );
                             } else {
-                          
                               setRecipients((prev) => {
                                 let old = [...prev];
-                        
-                              
-                                const findIndex = old.findIndex(u => u.role === role.roleValue && u.email.length === 0);
-                        
+
+                                const findIndex = old.findIndex(
+                                  (u) =>
+                                    u.role === role.roleValue &&
+                                    u.email.length === 0
+                                );
+
                                 if (findIndex >= 0) {
-                                
                                   old[findIndex] = {
                                     ...old[findIndex],
-                                    email
+                                    email,
                                   };
                                 } else {
-                                 
                                   old.push({
                                     email: email,
-                                    role: role.roleValue
+                                    role: role.roleValue,
                                   });
                                 }
-                        
+
                                 return old;
                               });
-                        
-                              
+
                               setSignatureElements((prev) => {
                                 let old = [...prev];
-                        
-                              
-                                const findIndex = old.findIndex(u => u.recipientRole === role.roleValue && u.recipientEmail.length === 0);
-                        
+
+                                const findIndex = old.findIndex(
+                                  (u) =>
+                                    u.recipientRole === role.roleValue &&
+                                    u.recipientEmail.length === 0
+                                );
+
                                 if (findIndex >= 0) {
-                            
                                   old[findIndex] = {
                                     ...old[findIndex],
-                                    recipientEmail: email
+                                    recipientEmail: email,
                                   };
                                 }
-                        
+
                                 return old;
                               });
                             }
@@ -938,9 +1135,8 @@ setShowSendConfirmation(true)
                         </select>
                         <button
                           onClick={() => {
-                           
-                            setCurrentRole(role.roleName)
-                            setShowAddContactModal(true)
+                            setCurrentRole(role.roleName);
+                            setShowAddContactModal(true);
                           }}
                           className="text-red-600 border-red-600 border px-3 py-1 rounded hover:bg-red-600 hover:text-white"
                         >
@@ -1048,7 +1244,7 @@ setShowSendConfirmation(true)
             </div>
           )}
 
-          {showSendConfirmation && loading==false?(
+          {showSendConfirmation && loading == false ? (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
               <div className="bg-white p-6 rounded-lg w-96 text-left">
                 <div className="flex justify-between">
@@ -1075,7 +1271,6 @@ setShowSendConfirmation(true)
                   >
                     Send
                   </button>
-                 
                 </div>
 
                 <div className="relative mb-6">
@@ -1087,107 +1282,123 @@ setShowSendConfirmation(true)
                   </div>
                 </div>
 
-               {recipients?.map((val,i)=>{
-                return  <div className="flex justify-between items-center">
-                <div>
-                  <p className="text-gray-600">{val?.email}</p>
-                </div>
-                <div className="flex items-center">
-                  <button
-                    onClick={()=>copyDocumentLink(val?.email)}
-                    className="text-blue-600 underline flex items-center"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-4 w-4 mr-1"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
-                      />
-                    </svg>
-                    Copy link
-                  </button>
-                  <button
-                    onClick={()=>shareLink(val?.email)}
-                    className="text-blue-600 underline flex items-center"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-4 w-4 mr-1"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
-                      />
-                    </svg>
-                    Share
-                  </button>
-                </div>
-              </div>
-               })}
+                {recipients?.map((val, i) => {
+                  return (
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="text-gray-600">{val?.email}</p>
+                      </div>
+                      <div className="flex items-center">
+                        <button
+                          onClick={() => copyDocumentLink(val?.email)}
+                          className="text-blue-600 underline flex items-center"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-4 w-4 mr-1"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
+                            />
+                          </svg>
+                          Copy link
+                        </button>
+                        <button
+                          onClick={() => shareLink(val?.email)}
+                          className="text-blue-600 underline flex items-center"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-4 w-4 mr-1"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
+                            />
+                          </svg>
+                          Share
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-          ):showSendConfirmation && loading==true?(
+          ) : showSendConfirmation && loading == true ? (
             <>
-           <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50">
-  <div className="bg-white p-8 rounded-xl shadow-xl w-full max-w-2xl mx-4">
-    <div className="flex justify-between items-start mb-6">
-      <h3 className="text-2xl font-semibold text-gray-900">
-        Processing Email Delivery
-        <span className="block text-sm font-normal text-gray-500 mt-1">
-          Please wait while we send documents to all recipients
-        </span>
-      </h3>
-     
-    </div>
+              <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50">
+                <div className="bg-white p-8 rounded-xl shadow-xl w-full max-w-2xl mx-4">
+                  <div className="flex justify-between items-start mb-6">
+                    <h3 className="text-2xl font-semibold text-gray-900">
+                      Processing Email Delivery
+                      <span className="block text-sm font-normal text-gray-500 mt-1">
+                        Please wait while we send documents to all recipients
+                      </span>
+                    </h3>
+                  </div>
 
-    <div className="bg-blue-50 p-5 rounded-lg border border-blue-200 mb-6">
-      <h4 className="font-medium text-blue-800 mb-3 flex items-center gap-2">
-        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-          <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
-        </svg>
-        Bulk Send Requirements
-      </h4>
-      <div className="text-blue-700 space-y-2">
-        <p className="flex items-start gap-2">
-          <span className="mt-1">•</span>
-          <span>Currently all template roles are assigned to specific contacts</span>
-        </p>
-        <p className="flex items-start gap-2">
-          <span className="mt-1">•</span>
-          <span>To enable bulk sending, please ensure at least one role remains unassigned</span>
-        </p>
-      </div>
-    </div>
+                  <div className="bg-blue-50 p-5 rounded-lg border border-blue-200 mb-6">
+                    <h4 className="font-medium text-blue-800 mb-3 flex items-center gap-2">
+                      <svg
+                        className="w-5 h-5"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
+                      </svg>
+                      Bulk Send Requirements
+                    </h4>
+                    <div className="text-blue-700 space-y-2">
+                      <p className="flex items-start gap-2">
+                        <span className="mt-1">•</span>
+                        <span>
+                          Currently all template roles are assigned to specific
+                          contacts
+                        </span>
+                      </p>
+                      <p className="flex items-start gap-2">
+                        <span className="mt-1">•</span>
+                        <span>
+                          To enable bulk sending, please ensure at least one
+                          role remains unassigned
+                        </span>
+                      </p>
+                    </div>
+                  </div>
 
-    <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-      <p className="text-yellow-800 flex items-start gap-2">
-        <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-          <path d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" />
-        </svg>
-        <span>
-          Note: Bulk sending allows simultaneous distribution to multiple signers. 
-          Unassigned roles will create unique links for individual recipient assignment.
-        </span>
-      </p>
-    </div>
-
-   
-  </div>
-</div>
+                  <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+                    <p className="text-yellow-800 flex items-start gap-2">
+                      <svg
+                        className="w-5 h-5 flex-shrink-0"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" />
+                      </svg>
+                      <span>
+                        Note: Bulk sending allows simultaneous distribution to
+                        multiple signers. Unassigned roles will create unique
+                        links for individual recipient assignment.
+                      </span>
+                    </p>
+                  </div>
+                </div>
+              </div>
             </>
-          ):''}
+          ) : (
+            ""
+          )}
 
           {showRoleModal && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -1357,13 +1568,16 @@ setShowSendConfirmation(true)
                   <button
                     onClick={() => {
                       if (selectedRecipient) {
-                       
-                        const recipientExists = recipients.some(recipient => recipient.email === selectedRecipient);
-                      
+                        const recipientExists = recipients.some(
+                          (recipient) => recipient.email === selectedRecipient
+                        );
+
                         if (recipientExists) {
-                          toast.error("This recipient has already been selected.", { containerId: "editTemplate" });
+                          toast.error(
+                            "This recipient has already been selected.",
+                            { containerId: "editTemplate" }
+                          );
                         } else {
-                        
                           setRecipients([
                             ...recipients,
                             {
@@ -1376,7 +1590,6 @@ setShowSendConfirmation(true)
                           setSelectedRecipient("");
                         }
                       }
-                      
                     }}
                     className="px-6 py-2 bg-[#002864] text-white rounded-lg hover:bg-[#001a42]"
                     disabled={!selectedRecipient}
