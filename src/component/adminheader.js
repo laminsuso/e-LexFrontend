@@ -222,12 +222,12 @@ const AdminLayout = () => {
       {/* Add overlay for mobile when sidebar is open */}
       {isSidebarOpen && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+          className="fixed inset-0 bg-black bg-opacity-50 z-[900] lg:z-40 lg:hidden"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
 
-      <aside className={`fixed left-0 lg:top-14 top-24 h-full bg-white shadow-md w-[18rem] z-20 transform transition-transform duration-300 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+      <aside className={`fixed left-0 lg:top-14 top-24 h-full bg-white shadow-md w-[18rem] z-[950] lg:z-20 transform transition-transform duration-300 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
         {localStorage.getItem('token') ? 
           <NavLink 
             to="/admin/profile" 
@@ -247,7 +247,7 @@ const AdminLayout = () => {
           </NavLink> : ''
         }
         <hr className="mx-4 border-gray-200" />
-        <nav className="p-4 sm:z-50">
+        <nav className="p-4">
           <ul>
             {menuItems.map((item, index) => (
               <MenuItem key={index} {...item} />
