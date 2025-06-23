@@ -178,6 +178,25 @@ const SignDocumentPage = () => {
     }
   };
 
+  const getEventCoordinates = (e) => {
+    const rect = canvasRef.current.getBoundingClientRect();
+    
+    // Handle touch events (mobile)
+    if (e.touches && e.touches[0]) {
+      return {
+        x: e.touches[0].clientX - rect.left,
+        y: e.touches[0].clientY - rect.top
+      };
+    }
+    
+    // Handle mouse events (desktop)
+    return {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
+    };
+  };
+
+
   const onDocumentLoadProgress = ({ loaded, total }) => {
     if (total > 0) {
       const progress = Math.round((loaded / total) * 100);
@@ -204,20 +223,29 @@ const SignDocumentPage = () => {
 
   const startDrawing = (e) => {
     if (!activeElement || !canvasRef.current) return;
-    const rect = canvasRef.current.getBoundingClientRect();
+    
+    // Prevent scrolling on mobile when drawing
+    e.preventDefault();
+    
+    const coords = getEventCoordinates(e);
     canvasContext.beginPath();
-    canvasContext.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+    canvasContext.moveTo(coords.x, coords.y);
     setIsDrawing(true);
   };
 
   const draw = (e) => {
     if (!isDrawing || !canvasRef.current) return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    canvasContext.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+    
+    // Prevent scrolling on mobile when drawing
+    e.preventDefault();
+    
+    const coords = getEventCoordinates(e);
+    canvasContext.lineTo(coords.x, coords.y);
     canvasContext.stroke();
   };
 
-  const stopDrawing = () => {
+  const stopDrawing = (e) => {
+    if (e) e.preventDefault();
     canvasContext?.closePath();
     setIsDrawing(false);
   };
