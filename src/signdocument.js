@@ -103,16 +103,9 @@ const SignDocumentPage = () => {
           const getUser = await axios.get(`${BASE_URL}/getUser`, {
             headers: { authorization: `Bearer ${token}` },
           });
-          if(getUser.data.user.email!=email){
-            const getUserByEmail = await axios.get(`${BASE_URL}/getUser/:email`);
-            setCurrentUser(getUserByEmail.data.user);
-            setPreference(getUserByEmail.data.preference);
-            setCurrentProfile(getUserByEmail.data.profile);
-          }else{
-            setCurrentUser(getUser.data.user);
-            setPreference(getUser.data.preference);
-            setCurrentProfile(getUser.data.profile);
-          }
+          setCurrentUser(getUser.data.user);
+          setPreference(getUser.data.preference);
+          setCurrentProfile(getUser.data.profile);
           const response = await axios.get(
             `${BASE_URL}/getSpecificDoc/${documentId}`);
           const docData = response.data.doc;
