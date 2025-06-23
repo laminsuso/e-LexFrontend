@@ -5,7 +5,7 @@ import axios from "axios";
 import { BASE_URL } from "./baseUrl";
 import { pdfjs } from "react-pdf";
 import { toast, ToastContainer } from "react-toastify";
-let draftId=`${Math.random()*999999999}`
+let draftId = `${Math.random() * 999999999}`
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
 const FIELD_TYPES = {
@@ -22,8 +22,10 @@ const FIELD_TYPES = {
 };
 
 const CreateTemplate = () => {
+  const [touchDraggedElement, setTouchDraggedElement] = useState(null);
+  const [touchStartPos, setTouchStartPos] = useState({ x: 0, y: 0 });
   const [file, setFile] = useState(null);
-  const [loading,setLoading]=useState(false)
+  const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
     title: "",
     sendInOrder: "yes",
@@ -57,21 +59,89 @@ const CreateTemplate = () => {
     name: '',
     phone: ''
   });
-  
+  const handleToolTouchStart = (type, email, options = {}) => (e) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+
+    setTouchDraggedElement({ type, email, options });
+    setTouchStartPos({
+      x: touch.clientX,
+      y: touch.clientY
+    });
+  };
+
+  const handleToolTouchMove = (e) => {
+    if (!touchDraggedElement) return;
+    e.preventDefault();
+    // This prevents scrolling while dragging
+  };
+
+  const handleToolTouchEnd = (e) => {
+    if (!touchDraggedElement) return;
+    e.preventDefault();
+
+    const touch = e.changedTouches[0];
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = touch.clientX - rect.left;
+    const y = touch.clientY - rect.top;
+
+    // Check if drop is within the document container
+    if (x >= 0 && x <= rect.width && y >= 0 && y <= rect.height) {
+      const { type, email, options } = touchDraggedElement;
+      createPlaceholder(type, email, x, y, options);
+    }
+
+    setTouchDraggedElement(null);
+    setTouchStartPos({ x: 0, y: 0 });
+  };
+
+  // Add touch event handlers for moving existing elements
+  const handleElementTouchStart = (e, id) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = touch.clientX - rect.left;
+    const y = touch.clientY - rect.top;
+    const element = signatureElements.find((el) => el.id === id);
+
+    setPositionOffset({ x: x - element.x, y: y - element.y });
+    setDraggedElement(id);
+  };
+
+  const handleElementTouchMove = (e) => {
+    if (!draggedElement) return;
+    e.preventDefault();
+
+    const touch = e.touches[0];
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = touch.clientX - rect.left - positionOffset.x;
+    const y = touch.clientY - rect.top - positionOffset.y;
+
+    setSignatureElements(
+      signatureElements.map((el) =>
+        el.id === draggedElement ? { ...el, x, y } : el
+      )
+    );
+  };
+
+  const handleElementTouchEnd = () => {
+    setDraggedElement(null);
+  };
+
   const handleAddEmail = () => {
     const phoneRegex = /^(03\d{9}|\+92\d{9})$/;
-    if(newContact.email.length==0){
-      toast.error("Please enter email",{containerId:"template"})
+    if (newContact.email.length == 0) {
+      toast.error("Please enter email", { containerId: "template" })
       return;
-    }else if(newContact.name.length==0){
-toast.error("Please enter name",{containerId:"template"})
-return;
-    }else if(newContact.phone.length==0){
-toast.error("Please enter phone",{containerId:"template"})
-return;
-    }else if(!phoneRegex.test(newContact.phone)){
-      toast.error("Please enter valid phone",{containerId:"template"})
-return;
+    } else if (newContact.name.length == 0) {
+      toast.error("Please enter name", { containerId: "template" })
+      return;
+    } else if (newContact.phone.length == 0) {
+      toast.error("Please enter phone", { containerId: "template" })
+      return;
+    } else if (!phoneRegex.test(newContact.phone)) {
+      toast.error("Please enter valid phone", { containerId: "template" })
+      return;
     }
     staticEmails.push(newContact);
     setShowAddEmailModal(false);
@@ -80,14 +150,14 @@ return;
     setSelectedEmail(mail)
   };
   const handleAssignmentSubmit = () => {
- 
-    if(selectedRole.length==0){
-      toast.error("Please select role",{containerId:"template"})
+
+    if (selectedRole.length == 0) {
+      toast.error("Please select role", { containerId: "template" })
       return;
     }
-    let alreadySelected=signatureElements.find(u=>u.recipientRole==selectedRole)
-    if(alreadySelected){
-      toast.error("Role already assigned",{containerId:"template"})
+    let alreadySelected = signatureElements.find(u => u.recipientRole == selectedRole)
+    if (alreadySelected) {
+      toast.error("Role already assigned", { containerId: "template" })
       return
     }
     setSignatureElements((prev) =>
@@ -121,7 +191,7 @@ return;
 
   const handleFormSubmit = async (e) => {
     e.preventDefault();
-    if (file && formData.title ) {
+    if (file && formData.title) {
       setStep(2);
     }
   };
@@ -138,7 +208,7 @@ return;
       ...options,
     };
 
-    
+
     setSignatureElements((prev) => [...prev, newElement]);
   };
 
@@ -169,7 +239,7 @@ return;
   const getPlaceholderText = (type, options) => {
     const texts = {
       [FIELD_TYPES.SIGNATURE]: "Signature",
-      
+
       [FIELD_TYPES.INITIALS]: "Initials",
       [FIELD_TYPES.NAME]: "Name",
       [FIELD_TYPES.JOB_TITLE]: "Job Title",
@@ -208,10 +278,10 @@ return;
       prev.map((el) =>
         el.id === draggedElement
           ? {
-              ...el,
-              x: cursorX - positionOffset.x,
-              y: cursorY - positionOffset.y,
-            }
+            ...el,
+            x: cursorX - positionOffset.x,
+            y: cursorY - positionOffset.y,
+          }
           : el
       )
     );
@@ -285,18 +355,18 @@ return;
         recipientEmail: element.recipientEmail || "",
         recipientRole: element.recipientRole || "",
       }));
-let allRolesNotAssigned=elementsToSave.find(u=>u.recipientRole.length==0)
+      let allRolesNotAssigned = elementsToSave.find(u => u.recipientRole.length == 0)
 
-if(allRolesNotAssigned){
-  setLoading(false)
-  toast.error("Please assign roles to all elements",{containerId:"template"})
-  return
-}else if(!elementsToSave || elementsToSave?.length==0){
-  toast.error("Please insert elements",{containerId:"template"})
-  setLoading(false)
-  return
-}
-const form = new FormData();
+      if (allRolesNotAssigned) {
+        setLoading(false)
+        toast.error("Please assign roles to all elements", { containerId: "template" })
+        return
+      } else if (!elementsToSave || elementsToSave?.length == 0) {
+        toast.error("Please insert elements", { containerId: "template" })
+        setLoading(false)
+        return
+      }
+      const form = new FormData();
       form.append("document", file);
       form.append("title", formData.title);
       form.append("elements", JSON.stringify(elementsToSave));
@@ -304,14 +374,14 @@ const form = new FormData();
       form.append("timeToComplete", formData.timeToComplete);
       form.append("redirectUrl", formData.redirectUrl);
       form.append("template", formData.isTemplate);
-      form.append('draftId',draftId)
+      form.append('draftId', draftId)
       let recipients = staticEmails.map((val) => val);
-      
-      
+
+
       recipients.forEach((email) => {
-        form.append('recipients[]', JSON.stringify(email));  
+        form.append('recipients[]', JSON.stringify(email));
       });
-      
+
 
       const saveResponse = await axios.post(
         `${BASE_URL}/saveTemplate`,
@@ -320,11 +390,11 @@ const form = new FormData();
       );
       setLoading(false)
       toast.success(`Template saved successfully`, { containerId: "template" });
-     window.location.reload(true)
+      window.location.reload(true)
       // setStep(1);
     } catch (error) {
       setLoading(false)
-     
+
       if (error?.response?.data?.error) {
         toast.error(error?.response?.data?.error, { containerId: "template" });
       } else {
@@ -338,7 +408,7 @@ const form = new FormData();
   const renderFieldPreview = (element) => {
     const typeClasses = {
       [FIELD_TYPES.SIGNATURE]: "border-blue-500 bg-blue-50",
-      
+
       [FIELD_TYPES.INITIALS]: "border-green-500 bg-green-50",
       [FIELD_TYPES.NAME]: "border-yellow-500 bg-yellow-50",
       [FIELD_TYPES.JOB_TITLE]: "border-purple-500 bg-purple-50",
@@ -349,9 +419,8 @@ const form = new FormData();
 
     return (
       <div
-        className={`border-2 p-2 cursor-move ${
-          typeClasses[element.type] || "border-gray-500 bg-gray-50"
-        }`}
+        className={`border-2 p-2 cursor-move ${typeClasses[element.type] || "border-gray-500 bg-gray-50"
+          }`}
         style={{
           position: "absolute",
           left: `${element.x}px`,
@@ -360,21 +429,24 @@ const form = new FormData();
           minWidth: "100px",
           minHeight: "40px",
         }}
-        onMouseDown={(e) => handleMouseDown(e, element.id)} 
+        onMouseDown={(e) => handleMouseDown(e, element.id)}
+        onTouchStart={(e) => handleElementTouchStart(e, element.id)}
+        onTouchMove={handleElementTouchMove}
+        onTouchEnd={handleElementTouchEnd}
       >
         <div className="text-xs text-gray-500">{element.placeholderText}</div>
         {element.value && <div className="text-sm mt-1">{element.value}</div>}
 
-     
+
         {(element.recipientEmail || element.recipientRole) && (
           <div className="text-xs mt-1">
             {element.recipientEmail && <div>{element.recipientEmail}</div>}
             {element.recipientRole && <div>({element.recipientRole})</div>}
           </div>
         )}
-       
 
-         
+
+
         <button
           onClick={() => deleteElement(element.id)}
           className="absolute -right-3 -top-3 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600"
@@ -382,7 +454,7 @@ const form = new FormData();
           ×
         </button>
 
-      
+
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -430,6 +502,9 @@ const form = new FormData();
         className="p-2 bg-gray-100 hover:bg-gray-200 text-sm cursor-move rounded mb-1"
         draggable
         onDragStart={handleToolDragStart(type, role?.name)}
+        onTouchStart={handleToolTouchStart(type, role?.name)}
+        onTouchMove={handleToolTouchMove}
+        onTouchEnd={handleToolTouchEnd}
       >
         {toolLabels[type]}
       </div>
@@ -441,23 +516,23 @@ const form = new FormData();
   };
   const handleAddRole = () => {
     if (newRole.trim()) {
-      setRoles((prev)=>{
+      setRoles((prev) => {
         let old;
-        if(prev.length>0){
-        old=[...prev]
-        }else{
-          old=[prev]
+        if (prev.length > 0) {
+          old = [...prev]
+        } else {
+          old = [prev]
         }
-        let already=old.find(u=>u.name==newRole.trim())
-        if(already){
-          toast.error("Role already created",{containerId:"requestSignature"})
+        let already = old.find(u => u.name == newRole.trim())
+        if (already) {
+          toast.error("Role already created", { containerId: "requestSignature" })
           return old
-        }else{
-         old=[...prev,{ id: uuidv4(), name: newRole.trim() }]
+        } else {
+          old = [...prev, { id: uuidv4(), name: newRole.trim() }]
           return old
         }
       })
-      
+
       setNewRole("");
       setShowRoleModal(false);
     }
@@ -469,37 +544,37 @@ const form = new FormData();
 
 
 
-  useEffect(()=>{
-    if(signatureElements.length>0 && file){
+  useEffect(() => {
+    if (signatureElements.length > 0 && file) {
       createDraft();
     }
-    },[signatureElements,file])
-    
-    const createDraft=async()=>{
-      
-      try{
-    let myForm=new FormData();
-    myForm.append('document',file)
-    myForm.append('elements',JSON.stringify(signatureElements))
-    let recipients = staticEmails.map((val) => val);
-    myForm.append('recipients',JSON.stringify(recipients))
-    myForm.append('title',formData.title)
-    myForm.append('draftId',draftId)
-    let token=localStorage.getItem('token')
-    let headers={
-      headers:{
-        authorization:`Bearer ${token}`
-      }
-    }
-    let res=await axios.post(`${BASE_URL}/createDraft`,myForm,headers)
-      }catch(e){
-        if(e?.response?.data?.error){
-          toast.error(e?.response?.data?.error,{containerId:"requestSignature"})
-        }else{
-          toast.error("Something went wrong pleae try again",{containerId:"requestSignature"})
+  }, [signatureElements, file])
+
+  const createDraft = async () => {
+
+    try {
+      let myForm = new FormData();
+      myForm.append('document', file)
+      myForm.append('elements', JSON.stringify(signatureElements))
+      let recipients = staticEmails.map((val) => val);
+      myForm.append('recipients', JSON.stringify(recipients))
+      myForm.append('title', formData.title)
+      myForm.append('draftId', draftId)
+      let token = localStorage.getItem('token')
+      let headers = {
+        headers: {
+          authorization: `Bearer ${token}`
         }
       }
+      let res = await axios.post(`${BASE_URL}/createDraft`, myForm, headers)
+    } catch (e) {
+      if (e?.response?.data?.error) {
+        toast.error(e?.response?.data?.error, { containerId: "requestSignature" })
+      } else {
+        toast.error("Something went wrong pleae try again", { containerId: "requestSignature" })
+      }
     }
+  }
 
 
   return (
@@ -548,7 +623,7 @@ const form = new FormData();
                 </p>
               </div>
 
-             
+
 
               <button
                 type="submit"
@@ -560,14 +635,17 @@ const form = new FormData();
           </div>
         ) : (
           <div
-            className="flex h-screen bg-gray-100"
+            className="flex min-h-screen lg:flex-row flex-col bg-gray-100"
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onDrop={handleDocumentDrop}
             onDragOver={(e) => e.preventDefault()}
+            onTouchMove={handleElementTouchMove}
+            onTouchEnd={handleElementTouchEnd}
             ref={containerRef}
+            style={{ touchAction: 'none' }}
           >
-            <div className="flex-1 p-4 overflow-auto relative">
+            <div className="flex-1 p-2 lg:p-4 overflow-auto relative w-full">
               <button
                 onClick={handleSaveTemplate}
                 className="absolute top-4 right-4 z-50 bg-[#002864] text-white px-6 py-2 rounded-[20px] shadow-lg "
@@ -577,10 +655,10 @@ const form = new FormData();
 
               {file?.type === "application/pdf" ? (
                 <div className="pdf-container">
-                  <Document file={file} onLoadSuccess={onLoadSuccess}>
+                  <Document file={file} onLoadSuccess={onLoadSuccess} className="w-full">
                     <Page
                       pageNumber={1}
-                      width={800}
+                      width={window.innerWidth < 1024 ? window.innerWidth - 32 : 800}
                       renderAnnotationLayer={false}
                       renderTextLayer={false}
                     />
@@ -597,7 +675,7 @@ const form = new FormData();
               {signatureElements.map((element) => renderFieldPreview(element))}
             </div>
 
-            <div className="w-80 bg-white p-4 shadow-lg overflow-y-auto">
+            <div className="lg:w-80 w-full bg-white p-4 shadow-lg overflow-y-auto">
               <div className="flex justify-between items-center mb-4">
                 <button
                   onClick={() => setShowRoleModal(true)}
@@ -834,17 +912,17 @@ const form = new FormData();
         )}
       </div>
 
-      {loading?<div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50">
-  <div className="bg-white p-8 rounded-xl shadow-xl w-full max-w-2xl mx-4 text-center">
-    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-    <h3 className="text-2xl font-semibold text-gray-900 mb-2">
-      Creating Template
-    </h3>
-    <p className="text-gray-600">
-      Please wait while your template is being created and configured
-    </p>
-  </div>
-</div>:''}
+      {loading ? <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50">
+        <div className="bg-white p-8 rounded-xl shadow-xl w-full max-w-2xl mx-4 text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <h3 className="text-2xl font-semibold text-gray-900 mb-2">
+            Creating Template
+          </h3>
+          <p className="text-gray-600">
+            Please wait while your template is being created and configured
+          </p>
+        </div>
+      </div> : ''}
     </>
   );
 };

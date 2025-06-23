@@ -6,6 +6,19 @@
   background-repeat: no-repeat;
   background-size: cover;
 }
+.prevent-scroll {
+  overflow: hidden !important;
+  touch-action: none !important;
+}
+
+.dragging-element {
+  pointer-events: none;
+  user-select: none;
+}
+.devbg{
+  background: url("./images/bg.png") no-repeat;
+  background-size: cover;
+}
 @keyframes op-loading-infinity {
   0% {
     transform: rotate(0deg);

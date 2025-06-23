@@ -105,12 +105,12 @@ const navigate=useNavigate();
     };
 
     return (
-        <div className="lg:px-[64px] lg:pt-[40px] px-[20px] py-[20px] lg:pb-[10px] bg-[#e5e7eb] min-h-screen">
+        <div className="lg:px-[64px] lg:pt-[40px] px-[20px] py-[20px] devbg lg:pb-[10px] bg-[#e5e7eb] min-h-screen">
             <ToastContainer containerId="pricing" />
             <Header /> 
             <div className="w-full max-w-[1440px] my-5 mx-auto">
                 <div className="flex justify-between items-center mb-8">
-                    <h1 className="text-2xl font-bold">Pricing Plans</h1>
+                    <h1 className="text-2xl font-bold text-white">Pricing Plans</h1>
                     <div className="flex items-center gap-4">
                         <div className="flex items-center bg-white rounded-full p-1">
                             <button

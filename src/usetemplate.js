@@ -243,9 +243,7 @@ const UseTemplate = () => {
   const fetchTemplate = async () => {
     try {
       let token = localStorage.getItem("token");
-      const res = await axios.get(`${BASE_URL}/getSpecificDoc/${id}`, {
-        headers: { authorization: `Bearer ${token}` },
-      });
+      const res = await axios.get(`${BASE_URL}/getSpecificDoc/${id}`);
       setCurrentTemplate(res.data.doc)
       console.log("DOCS")
       console.log(res)

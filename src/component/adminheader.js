@@ -209,7 +209,7 @@ setState(response.data.profile)
         </div>
       </header>
 
-      <aside className={`fixed left-0 lg:top-14 top-24 h-full bg-white shadow-md w-[18rem] transform transition-transform duration-300 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+      <aside className={`fixed left-0 lg:top-14 top-24 h-full bg-white shadow-md w-[18rem] z-[99999999] transform transition-transform duration-300 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
        {localStorage.getItem('token')? <NavLink to="/admin/profile" className="flex items-center p-4 hover:bg-gray-100 rounded">
           <img src={state?.avatar} alt="Avatar" className="w-[75px] h-[75px] rounded-full mr-3" />
           <div>
@@ -243,7 +243,7 @@ setState(response.data.profile)
       </aside>
 
       <main className={`mt-14 p-4 transition-all duration-300 h-full ${isSidebarOpen ? "lg:ml-64" : "ml-0"}`} style={{ backgroundColor: "#dedede", minHeight: "calc(100vh - 56px)" }}>
-        <div className="p-6 rounded">
+        <div className="lg:p-6 rounded">
           <Outlet />
         </div>
       </main>

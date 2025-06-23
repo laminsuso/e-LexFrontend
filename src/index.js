@@ -40,6 +40,7 @@ import Subscription from "./subscription";
 import ChangePassword from "./changePassword";
 import UseTemplate from "./usetemplate";
 import PublicProfile from "./publicProfile";
+import Contact from "./contact";
 const stripePromise = loadStripe(
   "pk_test_51OwuO4LcfLzcwwOYdssgGfUSfOgWT1LwO6ewi3CEPewY7WEL9ATqH6WJm3oAcLDA3IgUvVYLVEBMIEu0d8fUwhlw009JwzEYmV"
 );
@@ -52,6 +53,10 @@ const router = createBrowserRouter([
   {
     path: "/join",
     element: <Login />,
+  },
+  {
+    path:"/contact",
+    element:<Contact />
   },
   {
     path: "/forgetpassword",
