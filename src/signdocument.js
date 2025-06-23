@@ -73,16 +73,15 @@ const SignDocumentPage = () => {
   useEffect(() => {
     const getDocument = async () => {
       try {
+        localStorage.removeItem('token')
         const token = localStorage.getItem("token");
         let params = new URLSearchParams(location.search);
         let email = params.get("email");
-        alert(email)
 
         if (!token) {
           let responseone = await axios.post(`${BASE_URL}/registerAndLogin`, {
             email,
           });
-          alert(response.data.user.email)
           localStorage.setItem("token", responseone.data.token);
           setCurrentUser(responseone.data.user);
           setPreference(responseone.data.preference);
@@ -104,7 +103,6 @@ const SignDocumentPage = () => {
           const getUser = await axios.get(`${BASE_URL}/getUser`, {
             headers: { authorization: `Bearer ${token}` },
           });
-          alert(getUser.data.user.email)
           setCurrentUser(getUser.data.user);
           setPreference(getUser.data.preference);
           setCurrentProfile(getUser.data.profile);
@@ -254,8 +252,6 @@ const SignDocumentPage = () => {
   };
 
   const handleElementClick = (element) => {
-    alert(element.recipientEmail)
-    alert(currentUser.email)
     if (element?.recipientEmail !== currentUser?.email) return;
     setActiveElement(element);
     setSignatureType(null);
