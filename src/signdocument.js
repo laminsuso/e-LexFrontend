@@ -252,7 +252,10 @@ const SignDocumentPage = () => {
   };
 
   const handleElementClick = (element) => {
-    if (element?.recipientEmail !== currentUser?.email) return;
+    if (element?.recipientEmail !== currentUser?.email){
+      toast.error(`Your current email is ${currentUser.email} it is for ${element.recipientEmail}`,{containerId:"signaturesign"})
+      return;
+    } 
     setActiveElement(element);
     setSignatureType(null);
     switch (element.type) {
