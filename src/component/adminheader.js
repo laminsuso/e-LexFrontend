@@ -191,7 +191,7 @@ const AdminLayout = () => {
 
   return (
     <div className="min-h-screen">
-      <header className="fixed w-full top-0 left-0 bg-white shadow-sm z-10">
+      <header className="fixed w-full top-0 left-0 bg-white shadow-sm z-30">
         <div className="flex items-center justify-between p-4">
           <div className="flex items-center">
             <button
@@ -227,7 +227,7 @@ const AdminLayout = () => {
         />
       )}
 
-      <aside className={`fixed left-0 lg:top-14 top-24 h-full bg-white shadow-md w-[18rem] z-[99999999] transform transition-transform duration-300 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+      <aside className={`fixed left-0 lg:top-14 top-24 h-full bg-white shadow-md w-[18rem] z-20 transform transition-transform duration-300 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
         {localStorage.getItem('token') ? 
           <NavLink 
             to="/admin/profile" 
