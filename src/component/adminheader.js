@@ -247,7 +247,7 @@ const AdminLayout = () => {
           </NavLink> : ''
         }
         <hr className="mx-4 border-gray-200" />
-        <nav className="p-4">
+        <nav className="p-4 sm:z-50">
           <ul>
             {menuItems.map((item, index) => (
               <MenuItem key={index} {...item} />
