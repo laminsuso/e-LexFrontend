@@ -635,12 +635,7 @@ const SignDocumentPage = () => {
                   <>
                     <div className="flex border-b mb-4">
                       <button
-                        disabled={
-                          !(
-                            preference?.allowed_signature_types === "draw" ||
-                            preference?.allowed_signature_types === "all"
-                          )
-                        }
+                       
                         className={`flex-1 py-2 ${
                           signatureType === "draw"
                             ? "border-b-2 border-blue-500"
@@ -651,11 +646,7 @@ const SignDocumentPage = () => {
                         Draw
                       </button>
                       <button
-                        disabled={
-                          !["upload", "all"].includes(
-                            preference?.allowed_signature_types
-                          )
-                        }
+                      
                         className={`flex-1 py-2 ${
                           signatureType === "image"
                             ? "border-b-2 border-blue-500"
@@ -666,11 +657,7 @@ const SignDocumentPage = () => {
                         Upload
                       </button>
                       <button
-                        disabled={
-                          !["type", "all"].includes(
-                            preference?.allowed_signature_types
-                          )
-                        }
+                       
                         className={`flex-1 py-2 ${
                           signatureType === "typed"
                             ? "border-b-2 border-blue-500"
