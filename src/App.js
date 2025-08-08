@@ -37,7 +37,7 @@ function App() {
             </p>
             <div className="mt-10 flex justify-center items-center gap-4 flex-wrap">
                 <a href={localStorage.getItem('user')?'/admin':'/join'} className="bg-purple-600 text-white px-8 py-4 rounded-lg font-semibold text-lg shadow-lg hover:bg-purple-700 cta-button-primary">Get Started</a>
-                <a href="#" className="bg-white text-slate-700 px-8 py-4 rounded-lg font-semibold text-lg shadow-md border border-slate-200 hover:bg-slate-100 transition-colors">Request a Demo</a>
+                <a href="/contact" className="bg-white text-slate-700 px-8 py-4 rounded-lg font-semibold text-lg shadow-md border border-slate-200 hover:bg-slate-100 transition-colors">Request a Demo</a>
             </div>
             <div className="mt-16 max-w-5xl mx-auto">
                 <div className="bg-white rounded-2xl shadow-2xl p-4 border border-slate-200">
@@ -339,7 +339,7 @@ const UseCases = () => (
                     <p className="mt-4 max-w-2xl mx-auto text-lg text-purple-200">Join thousands of businesses that trust E- Lex Signature to secure and accelerate their most important documents. Get started in minutes.</p>
                     <div className="mt-8 flex justify-center items-center gap-4 flex-wrap">
                         <a href="#" className="bg-white text-purple-600 px-8 py-4 rounded-lg font-semibold text-lg shadow-lg hover:bg-slate-100 transition-colors">Get Started</a>
-                        <a href="#" className="bg-purple-500 text-white px-8 py-4 rounded-lg font-semibold text-lg shadow-md border border-purple-400 hover:bg-purple-400 transition-colors">Request a Demo</a>
+                        <a href="/contact" className="bg-purple-500 text-white px-8 py-4 rounded-lg font-semibold text-lg shadow-md border border-purple-400 hover:bg-purple-400 transition-colors">Request a Demo</a>
                     </div>
                 </div>
             </div>
