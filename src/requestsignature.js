@@ -75,12 +75,20 @@ const RequestSignaturesPage = () => {
 
   const handleFormSubmit = async (e) => {
     e.preventDefault();
+    console.log(formData)
+ 
     if(formData.title.length==0){
       toast.error("Please enter document title",{containerId:"requestSignature"})
+  return
     }else if(!file){
       toast.error("Please select a document",{containerId:"requestSignature"})
+   return
     }else if(formData.recipients?.length==0){
       toast.error("Please select recipients",{containerId:"requestSignature"})
+    return
+    }else if(formData.recipients.filter(u=>u.willSign==true).length==0){
+      toast.error("Please select atleast one signer",{containerId:"requestSignature"})
+      return
     }
     if (file && formData.title && formData.recipients.length > 0) {
       setStep(2);
@@ -126,7 +134,7 @@ fetchContactBooks();
       } else {
         setFormData({
           ...formData,
-          recipients: [...formData.recipients, { email: selectedEmail }],
+          recipients: [...formData.recipients, { email: selectedEmail ,willSign:'true'}],
         });
         setSelectedEmail("");
       }
@@ -483,10 +491,28 @@ console.log("LINK IS"+link)
   //   setRadioOptions("");
   // };
 
+  const handleChangeSign = (recipient, value) => {
+    try {
+      setFormData((prev) => {
+        const updatedRecipients = prev.recipients.map((r) =>
+          r.email === recipient.email ? { ...r, willSign: value } : r
+        );
+  
+        return {
+          ...prev,
+          recipients: updatedRecipients,
+        };
+      });
+    } catch (e) {
+      console.error("Error updating recipient:", e);
+    }
+  };
+  
+
   const handleSendRequest = async () => {
     try {
 
-     let check=formData.recipients.every(recipient => {
+     let check=formData.recipients.filter(u=>u.willSign==true).every(recipient => {
         return signatureElements.some(signature => signature.recipientEmail === recipient.email);
       });
       if (!check) {
@@ -666,6 +692,9 @@ return;
     }else if(!newRecipientPhone){
 toast.error("Please enter signer phone number",{containerId:"requestSignature"})
 return;
+    }else if(formData.recipients.find(u=>u.email==newRecipientEmail)){
+      toast.error("Reicipient already added",{containerId:"requestSignature"})
+      return;
     }
 
     const phoneRegex = /^(?:\+?[1-9]\d{9,14}|0\d{9,14})$/;
@@ -682,6 +711,7 @@ return;
           name: newRecipientName,
           phone: newRecipientPhone || "",
           address: newRecipientAddress || "",
+          willSign:'true'
         },
       ],
       newRecipientEmail: "",
@@ -880,13 +910,27 @@ return;
                           </p>
                         )}
                       </div>
-                      <button
+                     
+                      
+                      <select
+  onChange={(e) => {
+    handleChangeSign(recipient, e.target.value === "true");
+  }}
+  value={recipient.willSign ? "true" : "false"}
+  id="documentAction"
+  name="documentAction"
+>
+  <option value="true">Needs to Sign</option>
+  <option value="false">Will Receive a Copy</option>
+</select>
+<button
                         onClick={() => removeRecipient(index)}
                         className="text-red-500"
                       >
                         ×
                       </button>
                     </div>
+                    
                   ))}
                 </div>
               )}
@@ -970,7 +1014,7 @@ return;
 
             <div className="mb-6">
               <h4 className="font-medium mb-2">Recipients</h4>
-              {formData.recipients.map((recipient) => (
+              {formData.recipients.filter(u=>u.willSign==true).map((recipient) => (
                 <div
                   key={recipient.email}
                   className="mb-4 border-b pb-4 last:border-b-0"
