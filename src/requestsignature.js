@@ -134,7 +134,7 @@ fetchContactBooks();
       } else {
         setFormData({
           ...formData,
-          recipients: [...formData.recipients, { email: selectedEmail ,willSign:'true'}],
+          recipients: [...formData.recipients, { email: selectedEmail ,willSign:true}],
         });
         setSelectedEmail("");
       }
@@ -711,7 +711,7 @@ return;
           name: newRecipientName,
           phone: newRecipientPhone || "",
           address: newRecipientAddress || "",
-          willSign:'true'
+          willSign:true
         },
       ],
       newRecipientEmail: "",
@@ -916,7 +916,7 @@ return;
   onChange={(e) => {
     handleChangeSign(recipient, e.target.value === "true");
   }}
-  value={recipient.willSign ? "true" : "false"}
+  value={recipient.willSign ? true : false}
   id="documentAction"
   name="documentAction"
 >

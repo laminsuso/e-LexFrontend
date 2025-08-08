@@ -65,21 +65,38 @@ console.log(e.message)
 }
 
 
-const save=async()=>{
-  try{
-    let token=localStorage.getItem('token')
-    let headers={
-      headers:{
-        authorization:`Bearer ${token}`
-      }
+const save = async () => {
+  try {
+    let token = localStorage.getItem('token');
+    
+    if (!token) {
+      toast.error("Please login again", {containerId: "preferences"});
+      return;
     }
-let response=await axios.patch(`${BASE_URL}/update-preferences`,state,headers)
-toast.success("Preferences updated sucessfully",{containerId:"preferences"})
-  }catch(e){
-    if(e?.response?.data?.error){
-      toast.error(e?.response?.data?.error,{containerId:"preferences"})
-    }else{
-      toast.error("Something went wrong please try again",{containerId:"preferences"})
+    
+    // Log what we're sending for debugging
+    console.log('Sending state:', state);
+    
+    let response = await axios.patch(
+      `${BASE_URL}/update-preferences`, 
+      state, 
+      {
+        headers: {
+          authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
+    console.log('Response:', response.data);
+    toast.success("Preferences updated successfully", {containerId: "preferences"});
+    
+  } catch (e) {
+    console.error('Error saving preferences:', e);
+    if (e?.response?.data?.error) {
+      toast.error(e?.response?.data?.error, {containerId: "preferences"});
+    } else {
+      toast.error("Something went wrong please try again", {containerId: "preferences"});
     }
   }
 }
