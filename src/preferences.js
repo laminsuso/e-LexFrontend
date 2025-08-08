@@ -95,18 +95,21 @@ toast.success("Preferences updated sucessfully",{containerId:"preferences"})
   <h2 className="text-lg font-semibold">Allowed signature types</h2>
   <div className="flex flex-col md:flex-row gap-6">
     <div className="flex items-center gap-2">
-      <input 
-        type="radio" 
-        id="draw" 
-        name="signatureType"
-        value="draw"
-        checked={state.allowed_signature_types === 'draw'}
-        onChange={(e) => setState({...state, allowed_signature_types: e.target.value})}
-        className="w-4 h-4"
-      />
-      <label htmlFor="draw" className="flex items-center gap-1">
-        🖋 Draw
-      </label>
+     
+  
+  <input 
+    type="radio" 
+    id="signature" 
+    name="signatureType"
+    value="signature"
+    checked={state.allowed_signature_types === 'signature'}
+    onChange={(e) => setState({...state, allowed_signature_types: e.target.value})}
+    className="w-4 h-4"
+  />
+  <label htmlFor="signature" className="flex items-center gap-1">
+    🖋 Signature
+  </label>
+
     </div>
     <div className="flex items-center gap-2">
       <input 

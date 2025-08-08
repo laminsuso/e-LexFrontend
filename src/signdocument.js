@@ -82,10 +82,12 @@ const SignDocumentPage = () => {
           let responseone = await axios.post(`${BASE_URL}/registerAndLogin`, {
             email,
           });
+          console.log(responseone.data)
           localStorage.setItem("token", responseone.data.token);
           setCurrentUser(responseone.data.user);
           setPreference(responseone.data.preference);
           setCurrentProfile(responseone.data.profile);
+
           const response = await axios.get(
             `${BASE_URL}/getSpecificDoc/${documentId}`
           );
@@ -103,6 +105,7 @@ const SignDocumentPage = () => {
           const getUser = await axios.get(`${BASE_URL}/getUser`, {
             headers: { authorization: `Bearer ${token}` },
           });
+          console.log(getUser.data)
           setCurrentUser(getUser.data.user);
           setPreference(getUser.data.preference);
           setCurrentProfile(getUser.data.profile);
@@ -636,12 +639,7 @@ const SignDocumentPage = () => {
                   <>
                     <div className="flex border-b mb-4">
                       <button
-                        disabled={
-                          !(
-                            preference?.allowed_signature_types === "draw" ||
-                            preference?.allowed_signature_types === "all"
-                          )
-                        }
+                       
                         className={`flex-1 py-2 ${
                           signatureType === "draw"
                             ? "border-b-2 border-blue-500"
@@ -652,11 +650,7 @@ const SignDocumentPage = () => {
                         Draw
                       </button>
                       <button
-                        disabled={
-                          !["upload", "all"].includes(
-                            preference?.allowed_signature_types
-                          )
-                        }
+                       
                         className={`flex-1 py-2 ${
                           signatureType === "image"
                             ? "border-b-2 border-blue-500"
@@ -667,11 +661,7 @@ const SignDocumentPage = () => {
                         Upload
                       </button>
                       <button
-                        disabled={
-                          !["type", "all"].includes(
-                            preference?.allowed_signature_types
-                          )
-                        }
+                      
                         className={`flex-1 py-2 ${
                           signatureType === "typed"
                             ? "border-b-2 border-blue-500"
@@ -862,11 +852,7 @@ const SignDocumentPage = () => {
                   <button
                     onClick={handleSave}
                     className="bg-blue-600 text-white px-4 py-2 rounded"
-                    disabled={
-                      activeElement.type === "signature" &&
-                      signatureType === "typed" &&
-                      !inputValue
-                    }
+                   
                   >
                     Save
                   </button>

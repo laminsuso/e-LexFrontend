@@ -1072,7 +1072,7 @@ return;
            </div>
          </div>
 
-       {formData?.recipients?.map((val,i)=>{
+       {formData?.recipients?.filter(u=>u.willSign==true)?.map((val,i)=>{
         return <div key={i.toString()} className="flex justify-between items-center">
        <div>
          <p className="text-gray-600">{val?.email}</p>
