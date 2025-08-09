@@ -40,13 +40,14 @@ function App() {
                 <a href="/contact" className="bg-white text-slate-700 px-8 py-4 rounded-lg font-semibold text-lg shadow-md border border-slate-200 hover:bg-slate-100 transition-colors">Request a Demo</a>
             </div>
             <div className="mt-16 mx-auto inline-block">
-  <div className="bg-white rounded-2xl shadow-2xl p-4 border border-slate-200 inline-block">
-    <img
-      src="https://fiverr-res.cloudinary.com/image/upload/f_auto,q_auto/v1/secured-attachments/messaging_message/attachment/eabcb47ca22a502138147e297284b3b4-1754693147616/Dynamic%20Agreement%20Workflow.png?__cld_token__=exp=1754762780~hmac=e10f9e9bd274cf2c456bfc2f5295a6e03efb024db7d70d4b02cef68402944302"
-      alt="E- Lex Signature Dashboard showing a seamless digital workflow"
-      className="rounded-xl max-w-lg mx-auto h-auto"
-    />
-  </div>
+            <div className="bg-white rounded-2xl shadow-2xl p-4 border border-slate-200 inline-block h-[300px] overflow-visible relative">
+  <img
+    src="https://fiverr-res.cloudinary.com/image/upload/f_auto,q_auto/v1/secured-attachments/messaging_message/attachment/eabcb47ca22a502138147e297284b3b4-1754693147616/Dynamic%20Agreement%20Workflow.png?__cld_token__=exp=1754762780~hmac=e10f9e9bd274cf2c456bfc2f5295a6e03efb024db7d70d4b02cef68402944302"
+    alt="E- Lex Signature Dashboard showing a seamless digital workflow"
+    className="rounded-xl max-w-lg mx-auto h-[500px] object-contain absolute top-0 left-1/2 -translate-x-1/2"
+  />
+</div>
+
 </div>
 
         </div>
@@ -179,9 +180,16 @@ function App() {
                         </div>
                     </div>
                 </div>
-                <div className="bg-slate-100 p-8 rounded-2xl">
-                    <img src="https://fiverr-res.cloudinary.com/image/upload/f_auto,q_auto/v1/secured-attachments/messaging_message/attachment/eabcb47ca22a502138147e297284b3b4-1754693147607/Transparent%20Pricing%20Model.png?__cld_token__=exp=1754762780~hmac=c92e1f79ea157d83e9e8e5336874f4b409452479338311dd37f247d321beb146" alt="Illustration of a clear and simple pricing chart" className="rounded-xl shadow-lg w-full h-auto" />
-                </div>
+                <div className="bg-slate-100 p-8 rounded-2xl overflow-hidden relative">
+  <div className="overflow-hidden rounded-xl">
+    <img
+      src="https://fiverr-res.cloudinary.com/image/upload/f_auto,q_auto/v1/secured-attachments/messaging_message/attachment/eabcb47ca22a502138147e297284b3b4-1754693147607/Transparent%20Pricing%20Model.png?__cld_token__=exp=1754762780~hmac=c92e1f79ea157d83e9e8e5336874f4b409452479338311dd37f247d321beb146"
+      alt="Illustration of a clear and simple pricing chart"
+      className="rounded-xl -my-3 shadow-lg w-full h-auto object-cover object-left-top scale-110"
+    />
+  </div>
+</div>
+
             </div>
         </div>
     </section>
