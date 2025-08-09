@@ -41,7 +41,7 @@ function App() {
             </div>
             <div className="mt-16 max-w-5xl mx-auto">
                 <div className="bg-white rounded-2xl shadow-2xl p-4 border border-slate-200">
-                    <img src="https://placehold.co/1200x600/F3E8FF/9333EA?text=Dynamic+Agreement+Workflow" alt="E- Lex Signature Dashboard showing a seamless digital workflow" className="rounded-xl w-full h-auto" />
+                    <img src="https://fiverr-res.cloudinary.com/image/upload/f_auto,q_auto/v1/secured-attachments/messaging_message/attachment/eabcb47ca22a502138147e297284b3b4-1754693147616/Dynamic%20Agreement%20Workflow.png?__cld_token__=exp=1754762780~hmac=e10f9e9bd274cf2c456bfc2f5295a6e03efb024db7d70d4b02cef68402944302" alt="E- Lex Signature Dashboard showing a seamless digital workflow" className="rounded-xl w-full h-auto" />
                 </div>
             </div>
         </div>
@@ -142,81 +142,6 @@ function App() {
             </div>
         </div>
     </section>
-);
-
-// WhyChooseUs Component
-const WhyChooseUs = () => (
-    <section className="py-20 md:py-28">
-        <div className="container mx-auto px-6">
-            <div className="grid md:grid-cols-2 gap-12 items-center">
-                <div className="pr-8">
-                    <span className="text-purple-600 font-semibold">THE E- LEX SIGNATURE DIFFERENCE</span>
-                    <h2 className="mt-2 text-3xl md:text-4xl font-bold text-slate-900">Pricing and Support That Puts You First</h2>
-                    <p className="mt-4 text-lg text-slate-600">We believe in building partnerships, not just processing transactions. That's why we've built our business model around transparency, flexibility, and a genuine commitment to your success.</p>
-                    <div className="mt-8 space-y-6">
-                        <div className="flex gap-4">
-                            <div className="flex-shrink-0 h-8 w-8 flex items-center justify-center bg-green-100 text-green-600 rounded-full">✓</div>
-                            <div>
-                                <h4 className="font-semibold text-slate-900">Transparent & Flexible Pricing</h4>
-                                <p className="text-slate-600">No hidden costs, no renewal rate hikes, and no per-user overcharges. Choose a plan that truly fits your needs.</p>
-                            </div>
-                        </div>
-                        <div className="flex gap-4">
-                            <div className="flex-shrink-0 h-8 w-8 flex items-center justify-center bg-green-100 text-green-600 rounded-full">✓</div>
-                            <div>
-                                <h4 className="font-semibold text-slate-900">White-Labeling & Custom Branding</h4>
-                                <p className="text-slate-600">Provide a consistent, on-brand experience for your signers with full customization of logos and email communications.</p>
-                            </div>
-                        </div>
-                        <div className="flex gap-4">
-                            <div className="flex-shrink-0 h-8 w-8 flex items-center justify-center bg-green-100 text-green-600 rounded-full">✓</div>
-                            <div>
-                                <h4 className="font-semibold text-slate-900">Dedicated Customer Support</h4>
-                                <p className="text-slate-600">Get accessible, expert support from real humans who are invested in helping you from setup to troubleshooting.</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div className="bg-slate-100 p-8 rounded-2xl">
-                    <img src="https://placehold.co/600x500/F3E8FF/9333EA?text=Transparent+Pricing+Model" alt="Illustration of a clear and simple pricing chart" className="rounded-xl shadow-lg w-full h-auto" />
-                </div>
-            </div>
-        </div>
-    </section>
-);
-
-// UseCases Component
-const UseCases = () => (
-    <section id="use-cases" className="py-20 md:py-28 bg-white">
-        <div className="container mx-auto px-6">
-            <div className="text-center max-w-3xl mx-auto">
-                <h2 className="text-3xl md:text-4xl font-bold text-slate-900">Powering Every Department</h2>
-                <p className="mt-4 text-lg text-slate-600">From sales contracts to HR onboarding, E- Lex Signature is flexible enough to streamline agreement workflows across your entire organization.</p>
-            </div>
-            <div className="mt-16 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-8 text-center">
-                <div className="p-4 bg-slate-50 rounded-xl hover:bg-white hover:shadow-lg transition-all">
-                    <div className="flex justify-center items-center h-16 w-16 mx-auto bg-purple-100 rounded-full"><span className="text-3xl">📈</span></div>
-                    <h3 className="mt-4 font-semibold text-slate-900">Sales Contracts</h3>
-                </div>
-                <div className="p-4 bg-slate-50 rounded-xl hover:bg-white hover:shadow-lg transition-all">
-                    <div className="flex justify-center items-center h-16 w-16 mx-auto bg-cyan-100 rounded-full"><span className="text-3xl">🤝</span></div>
-                    <h3 className="mt-4 font-semibold text-slate-900">HR Onboarding</h3>
-                </div>
-                <div className="p-4 bg-slate-50 rounded-xl hover:bg-white hover:shadow-lg transition-all">
-                    <div className="flex justify-center items-center h-16 w-16 mx-auto bg-emerald-100 rounded-full"><span className="text-3xl">⚖️</span></div>
-                    <h3 className="mt-4 font-semibold text-slate-900">Legal Compliance</h3>
-                </div>
-                <div className="p-4 bg-slate-50 rounded-xl hover:bg-white hover:shadow-lg transition-all">
-                    <div className="flex justify-center items-center h-16 w-16 mx-auto bg-amber-100 rounded-full"><span className="text-3xl">🏠</span></div>
-                    <h3 className="mt-4 font-semibold text-slate-900">Real Estate</h3>
-                </div>
-                <div className="p-4 bg-slate-50 rounded-xl hover:bg-white hover:shadow-lg transition-all">
-                    <div className="flex justify-center items-center h-16 w-16 mx-auto bg-rose-100 rounded-full"><span className="text-3xl">🛒</span></div>
-                    <h3 className="mt-4 font-semibold text-slate-900">Procurement</h3>
-                </div>
-            </div>
-        </div>
-    </section>
 
     <section className="py-20 md:py-28">
         <div className="container mx-auto px-6">
@@ -250,7 +175,7 @@ const UseCases = () => (
                     </div>
                 </div>
                 <div className="bg-slate-100 p-8 rounded-2xl">
-                    <img src="https://placehold.co/600x500/F3E8FF/9333EA?text=Transparent+Pricing+Model" alt="Illustration of a clear and simple pricing chart" className="rounded-xl shadow-lg w-full h-auto" />
+                    <img src="https://fiverr-res.cloudinary.com/image/upload/f_auto,q_auto/v1/secured-attachments/messaging_message/attachment/eabcb47ca22a502138147e297284b3b4-1754693147607/Transparent%20Pricing%20Model.png?__cld_token__=exp=1754762780~hmac=c92e1f79ea157d83e9e8e5336874f4b409452479338311dd37f247d321beb146" alt="Illustration of a clear and simple pricing chart" className="rounded-xl shadow-lg w-full h-auto" />
                 </div>
             </div>
         </div>
@@ -286,6 +211,8 @@ const UseCases = () => (
             </div>
         </div>
     </section>
+
+   
 
     <section className="py-20 md:py-28">
         <div className="container mx-auto px-6">
