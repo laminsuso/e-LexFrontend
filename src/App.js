@@ -39,11 +39,16 @@ function App() {
                 <a href={localStorage.getItem('user')?'/admin':'/join'} className="bg-purple-600 text-white px-8 py-4 rounded-lg font-semibold text-lg shadow-lg hover:bg-purple-700 cta-button-primary">Get Started</a>
                 <a href="/contact" className="bg-white text-slate-700 px-8 py-4 rounded-lg font-semibold text-lg shadow-md border border-slate-200 hover:bg-slate-100 transition-colors">Request a Demo</a>
             </div>
-            <div className="mt-16 max-w-5xl mx-auto">
-                <div className="bg-white rounded-2xl shadow-2xl p-4 border border-slate-200">
-                    <img src="https://fiverr-res.cloudinary.com/image/upload/f_auto,q_auto/v1/secured-attachments/messaging_message/attachment/eabcb47ca22a502138147e297284b3b4-1754693147616/Dynamic%20Agreement%20Workflow.png?__cld_token__=exp=1754762780~hmac=e10f9e9bd274cf2c456bfc2f5295a6e03efb024db7d70d4b02cef68402944302" alt="E- Lex Signature Dashboard showing a seamless digital workflow" className="rounded-xl w-full h-auto" />
-                </div>
-            </div>
+            <div className="mt-16 mx-auto inline-block">
+  <div className="bg-white rounded-2xl shadow-2xl p-4 border border-slate-200 inline-block">
+    <img
+      src="https://fiverr-res.cloudinary.com/image/upload/f_auto,q_auto/v1/secured-attachments/messaging_message/attachment/eabcb47ca22a502138147e297284b3b4-1754693147616/Dynamic%20Agreement%20Workflow.png?__cld_token__=exp=1754762780~hmac=e10f9e9bd274cf2c456bfc2f5295a6e03efb024db7d70d4b02cef68402944302"
+      alt="E- Lex Signature Dashboard showing a seamless digital workflow"
+      className="rounded-xl max-w-lg mx-auto h-auto"
+    />
+  </div>
+</div>
+
         </div>
     </section>
 
@@ -117,7 +122,7 @@ function App() {
                     </div>
                     <ul className="mt-4 space-y-3 text-slate-600 list-inside">
                         <li className="flex items-start"><span className="text-purple-500 mr-2 mt-1">&#10003;</span> <strong>Qualified Electronic Signatures (QES)</strong> for maximum legal weight.</li>
-                        <li className="flex items-start"><span className="text-purple-500 mr-2 mt-1">&#10003;</span> <strong>AI-Powered Identity Verification</strong> to combat modern fraud.</li>
+                        <li className="flex items-start"><span className="text-purple-500 mr-2 mt-1">&#10003;</span> <strong>Identity Verification</strong> to combat modern fraud.</li>
                         <li className="flex items-start"><span className="text-purple-500 mr-2 mt-1">&#10003;</span> <strong>Blockchain Timestamping</strong> for immutable proof of existence.</li>
                         <li className="flex items-start"><span className="text-purple-500 mr-2 mt-1">&#10003;</span> <strong>Tamper-Proof Audit Trails</strong> with cryptographic seals.</li>
                         <li className="flex items-start"><span className="text-purple-500 mr-2 mt-1">&#10003;</span> <strong>Global Compliance</strong> (HIPAA, GDPR, SOC 2 Type II, etc.).</li>
@@ -265,7 +270,7 @@ function App() {
                     <h2 className="text-3xl md:text-4xl font-bold text-white">Ready to Revolutionize Your Agreements?</h2>
                     <p className="mt-4 max-w-2xl mx-auto text-lg text-purple-200">Join thousands of businesses that trust E- Lex Signature to secure and accelerate their most important documents. Get started in minutes.</p>
                     <div className="mt-8 flex justify-center items-center gap-4 flex-wrap">
-                        <a href="#" className="bg-white text-purple-600 px-8 py-4 rounded-lg font-semibold text-lg shadow-lg hover:bg-slate-100 transition-colors">Get Started</a>
+                        <a href={localStorage.getItem('user')?'/admin':'/join'} className="bg-white text-purple-600 px-8 py-4 rounded-lg font-semibold text-lg shadow-lg hover:bg-slate-100 transition-colors">Get Started</a>
                         <a href="/contact" className="bg-purple-500 text-white px-8 py-4 rounded-lg font-semibold text-lg shadow-md border border-purple-400 hover:bg-purple-400 transition-colors">Request a Demo</a>
                     </div>
                 </div>
