@@ -374,9 +374,14 @@ const UseTemplate = () => {
     try {
       let token = localStorage.getItem("token");
       const res = await axios.get(`${BASE_URL}/getSpecificDoc/${id}`);
+
       setCurrentTemplate(res.data.doc);
       console.log("DOCS");
       console.log(res);
+      setCurrentTemplate(res.data.doc)
+      console.log("DOCS")
+      console.log(res)
+
       const containerWidth = containerRef.current?.offsetWidth || 800;
       setFile(res.data.doc.file);
       let transformedRecipients = res.data.doc.elements.map((val, i) => {

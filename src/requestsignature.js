@@ -951,52 +951,55 @@ const RequestSignaturesPage = () => {
                   </button>
                 </div>
 
-
                 {formData.recipients.length > 0 && (
-                  <div className="border rounded p-2 mt-4">
-                    {formData.recipients.map((recipient, index) => (
-                      <div
-                        key={index}
-                        className="flex justify-between items-center mb-2 last:mb-0"
-                      >
-                        <div>
-                          <p className="font-medium">
-                            {recipient.name} ({recipient.email})
-                          </p>
-                          {recipient.phone && (
-                            <p className="text-xs text-gray-500">
-                              📞 {recipient.phone}
-                            </p>
-                          )}
-                          {recipient.address && (
-                            <p className="text-xs text-gray-500">
-                              📍 {recipient.address}
-                            </p>
-                          )}
-                        </div>
+  <div className="border rounded p-2 mt-4">
+    {formData.recipients.map((recipient, index) => (
+      <div
+        key={index}
+        className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-2 last:mb-0 gap-2"
+      >
+        <div className="flex-1 min-w-0">
+          <p className="font-medium break-words">
+            {recipient.name} ({recipient.email})
+          </p>
+          {recipient.phone && (
+            <p className="text-xs text-gray-500 break-words">
+              📞 {recipient.phone}
+            </p>
+          )}
+          {recipient.address && (
+            <p className="text-xs text-gray-500 break-words">
+              📍 {recipient.address}
+            </p>
+          )}
+        </div>
 
-                        <select
-  onChange={(e) => {
-    handleChangeSign(recipient, e.target.value === "true");
-  }}
-  value={recipient.willSign ? true : false}
-  id="documentAction"
-  name="documentAction"
->
-  <option value="true">Needs to Sign</option>
-  <option value="false">Will Receive a Copy</option>
-</select>
-                        <button
-                          onClick={() => removeRecipient(index)}
-                          className="text-red-500"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+        <div className="flex flex-wrap sm:flex-nowrap gap-2 items-center">
+          <select
+            onChange={(e) =>
+              handleChangeSign(recipient, e.target.value === "true")
+            }
+            value={recipient.willSign ? true : false}
+            id="documentAction"
+            name="documentAction"
+            className="border rounded p-1 w-full sm:w-auto"
+          >
+            <option value="true">Needs to Sign</option>
+            <option value="false">Will Receive a Copy</option>
+          </select>
+
+          <button
+            onClick={() => removeRecipient(index)}
+            className="text-red-500 text-lg"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+    ))}
+  </div>
+)}
+</div>
 
               <button
                 type="submit"

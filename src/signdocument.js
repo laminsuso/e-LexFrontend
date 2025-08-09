@@ -40,6 +40,7 @@ const FRONTEND_DATE_HEIGHT = 45;
 
 const SignDocumentPage = () => {
   const { documentId } = useParams();
+ 
   const [documentData, setDocumentData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [currentProfile, setCurrentProfile] = useState("");
@@ -82,10 +83,12 @@ const SignDocumentPage = () => {
           let responseone = await axios.post(`${BASE_URL}/registerAndLogin`, {
             email,
           });
+          console.log(responseone.data)
           localStorage.setItem("token", responseone.data.token);
           setCurrentUser(responseone.data.user);
           setPreference(responseone.data.preference);
           setCurrentProfile(responseone.data.profile);
+
           const response = await axios.get(
             `${BASE_URL}/getSpecificDoc/${documentId}`
           );
@@ -103,6 +106,7 @@ const SignDocumentPage = () => {
           const getUser = await axios.get(`${BASE_URL}/getUser`, {
             headers: { authorization: `Bearer ${token}` },
           });
+          console.log(getUser.data)
           setCurrentUser(getUser.data.user);
           setPreference(getUser.data.preference);
           setCurrentProfile(getUser.data.profile);
@@ -179,6 +183,7 @@ const SignDocumentPage = () => {
     }
   };
 
+
   const getEventCoordinates = (e) => {
     const rect = canvasRef.current.getBoundingClientRect();
     
@@ -196,6 +201,7 @@ const SignDocumentPage = () => {
       y: e.clientY - rect.top
     };
   };
+
 
 
   const onDocumentLoadProgress = ({ loaded, total }) => {
@@ -678,6 +684,7 @@ const SignDocumentPage = () => {
                         Draw
                       </button>
                       <button
+
                       
                         className={`flex-1 py-2 ${
                           signatureType === "image"
@@ -689,7 +696,8 @@ const SignDocumentPage = () => {
                         Upload
                       </button>
                       <button
-                       
+
+            
                         className={`flex-1 py-2 ${
                           signatureType === "typed"
                             ? "border-b-2 border-blue-500"
@@ -712,9 +720,11 @@ const SignDocumentPage = () => {
                           onMouseMove={draw}
                           onMouseUp={stopDrawing}
                           onMouseLeave={stopDrawing}
+
                           onTouchStart={startDrawing}
                           onTouchMove={draw}
                           onTouchEnd={stopDrawing}
+
                         />
                         <button
                           onClick={handleClearCanvas}
@@ -883,11 +893,7 @@ const SignDocumentPage = () => {
                   <button
                     onClick={handleSave}
                     className="bg-blue-600 text-white px-4 py-2 rounded"
-                    disabled={
-                      activeElement.type === "signature" &&
-                      signatureType === "typed" &&
-                      !inputValue
-                    }
+                   
                   >
                     Save
                   </button>
