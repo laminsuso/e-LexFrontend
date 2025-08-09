@@ -4,14 +4,26 @@ import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { BASE_URL } from "../baseUrl";
 
 const AdminLayout = () => {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Default to false for mobile-first
   const [state, setState] = useState();
-  const location = useLocation(); // Add this to track route changes
+  const [isMobile, setIsMobile] = useState(false);
+  const location = useLocation();
 
+  // Check screen size and set responsive states
   useEffect(() => {
     const checkScreenSize = () => {
-      const isDesktop = window.matchMedia('(min-width: 1024px)').matches;
-      setIsSidebarOpen(isDesktop);
+      const mobile = window.matchMedia('(max-width: 1023px)').matches;
+      const desktop = window.matchMedia('(min-width: 1024px)').matches;
+      
+      setIsMobile(mobile);
+      
+      // On desktop, sidebar should be open by default
+      // On mobile, sidebar should be closed by default
+      if (desktop) {
+        setIsSidebarOpen(true);
+      } else {
+        setIsSidebarOpen(false);
+      }
     };
 
     checkScreenSize();
@@ -19,13 +31,12 @@ const AdminLayout = () => {
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
 
-  // Add this effect to close sidebar on mobile when route changes
+  // Close sidebar on mobile when route changes
   useEffect(() => {
-    const isMobile = window.matchMedia('(max-width: 1023px)').matches;
     if (isMobile) {
       setIsSidebarOpen(false);
     }
-  }, [location.pathname]); // This will run whenever the route changes
+  }, [location.pathname, isMobile]);
 
   const menuItems = [
     {
@@ -130,9 +141,7 @@ const AdminLayout = () => {
   const MenuItem = ({ icon, title, path, subItems }) => {
     const [isSubmenuOpen, setIsSubmenuOpen] = useState(false);
 
-    // Function to handle navigation and close sidebar on mobile
     const handleNavigation = () => {
-      const isMobile = window.matchMedia('(max-width: 1023px)').matches;
       if (isMobile) {
         setIsSidebarOpen(false);
       }
@@ -144,42 +153,42 @@ const AdminLayout = () => {
           to={path || '#'} 
           end
           className={({ isActive }) =>
-            `flex items-center p-2 rounded hover:bg-gray-100 ${
+            `flex items-center p-2 rounded hover:bg-gray-100 transition-colors duration-200 ${
               isActive && !subItems ? "bg-gray-100 text-blue-600" : ""
             }`
           }
           onClick={subItems ? (e) => {
             e.preventDefault();
             setIsSubmenuOpen(!isSubmenuOpen);
-          } : handleNavigation} // Close sidebar on navigation for mobile
+          } : handleNavigation}
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={icon} />
           </svg>
-          <span className="ml-3">{title}</span>
+          <span className="ml-3 truncate">{title}</span>
           {subItems && (
-            <svg className={`w-4 h-4 ml-auto transform ${isSubmenuOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className={`w-4 h-4 ml-auto transform transition-transform duration-200 flex-shrink-0 ${isSubmenuOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           )}
         </NavLink>
         {subItems && isSubmenuOpen && (
-          <ul className="ml-8">
+          <ul className="ml-8 mt-1">
             {subItems.map((item, index) => (
               <li key={index} className="my-1">
                 <NavLink
                   to={item.path}
                   className={({ isActive }) =>
-                    `flex items-center p-2 text-sm rounded hover:bg-gray-100 ${
+                    `flex items-center p-2 text-sm rounded hover:bg-gray-100 transition-colors duration-200 ${
                       isActive ? "bg-gray-100 text-blue-600" : ""
                     }`
                   }
-                  onClick={handleNavigation} // Close sidebar on navigation for mobile
+                  onClick={handleNavigation}
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} />
                   </svg>
-                  <span className="ml-2">{item.title}</span>
+                  <span className="ml-2 truncate">{item.title}</span>
                 </NavLink>
               </li>
             ))}
@@ -190,84 +199,100 @@ const AdminLayout = () => {
   };
 
   return (
-    <div className="min-h-screen">
-      <header className="fixed w-full top-0 left-0 bg-white shadow-sm z-30">
-        <div className="flex items-center justify-between p-4">
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="fixed w-full top-0 left-0 bg-white shadow-sm z-30 h-14">
+        <div className="flex items-center justify-between h-full px-4">
           <div className="flex items-center">
             <button
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="mr-4 p-2 hover:bg-gray-100 rounded"
+              className="mr-2 sm:mr-4 p-2 hover:bg-gray-100 rounded transition-colors duration-200"
+              aria-label="Toggle sidebar"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-            <Link to='/'>
+            <Link to='/' className="flex items-center">
               <div className="flex justify-center items-center gap-1">
-                <img src="https://res.cloudinary.com/dbjwbveqn/image/upload/v1744296499/icononly_transparent_nobuffer_xmjeis.png" alt="Company Logo" className="h-8" />
-                E-Lex Signature
+                <img 
+                  src="https://res.cloudinary.com/dbjwbveqn/image/upload/v1744296499/icononly_transparent_nobuffer_xmjeis.png" 
+                  alt="Company Logo" 
+                  className="h-8 w-8 object-contain" 
+                />
+                <span className="hidden sm:inline font-semibold">E-Lex Signature</span>
+                <span className="sm:hidden font-semibold">E-Lex</span>
               </div>
             </Link>
           </div>
           <div className="flex items-center">
             <Link to='/pricing'>
-              <button className=" text-[#e10032] px-4 py-2 rounded-[20px] mr-4 border border-[#e10032]">
-                Upgrade Now
+              <button className="text-[#e10032] px-3 sm:px-4 py-2 rounded-[20px] border border-[#e10032] hover:bg-[#e10032] hover:text-white transition-colors duration-200 text-sm">
+                <span className="hidden sm:inline">Upgrade Now</span>
+                <span className="sm:hidden">Upgrade</span>
               </button>
             </Link>
           </div>
         </div>
       </header>
 
-      {/* Add overlay for mobile when sidebar is open */}
-      {isSidebarOpen && (
+      {/* Overlay for mobile when sidebar is open */}
+      {isSidebarOpen && isMobile && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-[900] lg:z-40 lg:hidden"
+          className="fixed inset-0 bg-black bg-opacity-50 z-40"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
 
-      <aside className={`fixed left-0 lg:top-14 top-24 h-full bg-white shadow-md w-[18rem] z-[950] lg:z-20 transform transition-transform duration-300 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
-        {localStorage.getItem('token') ? 
-          <NavLink 
-            to="/admin/profile" 
-            className="flex items-center p-4 hover:bg-gray-100 rounded"
-            onClick={() => {
-              const isMobile = window.matchMedia('(max-width: 1023px)').matches;
-              if (isMobile) {
-                setIsSidebarOpen(false);
-              }
-            }}
-          >
-            <img src={state?.avatar} alt="Avatar" className="w-[75px] h-[75px] rounded-full mr-3" />
-            <div>
-              <p className="font-bold">{state?.name}</p>
-              <p className="text-xs text-gray-600">{state?.company}</p>
-            </div>
-          </NavLink> : ''
-        }
-        <hr className="mx-4 border-gray-200" />
+      {/* Sidebar */}
+      <aside className={`fixed left-0 top-14 h-[calc(100vh-3.5rem)] bg-white shadow-md w-72 sm:w-80 lg:w-64 xl:w-72 z-50 transform transition-transform duration-300 ease-in-out overflow-y-auto ${
+        isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+      }`}>
+        {/* User Profile Section */}
+        {localStorage.getItem('token') && state && (
+          <>
+            <NavLink 
+              to="/admin/profile" 
+              className="flex items-center p-4 hover:bg-gray-50 transition-colors duration-200"
+              onClick={() => {
+                if (isMobile) {
+                  setIsSidebarOpen(false);
+                }
+              }}
+            >
+              <img 
+                src={state?.avatar} 
+                alt="Avatar" 
+                className="w-12 h-12 sm:w-16 sm:h-16 lg:w-12 lg:h-12 xl:w-16 xl:h-16 rounded-full mr-3 object-cover flex-shrink-0" 
+              />
+              <div className="min-w-0 flex-1">
+                <p className="font-bold truncate text-sm sm:text-base lg:text-sm xl:text-base">{state?.name}</p>
+                <p className="text-xs text-gray-600 truncate">{state?.company}</p>
+              </div>
+            </NavLink>
+            <hr className="mx-4 border-gray-200" />
+          </>
+        )}
+        
+        {/* Navigation Menu */}
         <nav className="p-4">
-          <ul>
+          <ul className="space-y-1">
             {menuItems.map((item, index) => (
               <MenuItem key={index} {...item} />
             ))}
-            <li className="my-1">
+            <li className="my-1 pt-4 border-t border-gray-200">
               <NavLink
                 to={'/'}
-                end
-                className={({ isActive }) =>
-                  `flex items-center p-2 rounded hover:bg-gray-100`}
+                className="flex items-center p-2 rounded hover:bg-gray-100 text-red-600 hover:bg-red-50 transition-colors duration-200"
                 onClick={() => {
                   localStorage.removeItem('token');
-                  const isMobile = window.matchMedia('(max-width: 1023px)').matches;
                   if (isMobile) {
                     setIsSidebarOpen(false);
                   }
                 }}  
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.5 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                 </svg>
                 <span className="ml-3">Logout</span>
               </NavLink>
@@ -276,9 +301,17 @@ const AdminLayout = () => {
         </nav>
       </aside>
 
-      <main className={`mt-14 p-4 transition-all duration-300 h-full ${isSidebarOpen ? "lg:ml-64" : "ml-0"}`} style={{ backgroundColor: "#dedede", minHeight: "calc(100vh - 56px)" }}>
-        <div className="lg:p-6 rounded">
-          <Outlet />
+      {/* Main Content */}
+      <main className={`pt-14 transition-all duration-300 ease-in-out min-h-screen ${
+        isSidebarOpen && !isMobile ? "lg:ml-64 xl:ml-72" : "ml-0"
+      }`} 
+      style={{ backgroundColor: "#dedede" }}>
+        <div className="p-2 sm:p-4 lg:p-6">
+          <div className="bg-white rounded-lg shadow-sm min-h-[calc(100vh-7rem)]">
+            <div className="p-4 sm:p-6">
+              <Outlet />
+            </div>
+          </div>
         </div>
       </main>
     </div>
