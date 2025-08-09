@@ -105,7 +105,7 @@ const navigate=useNavigate();
     };
 
     return (
-        <div className="lg:px-[64px] lg:pt-[40px] px-[20px] py-[20px] devbg lg:pb-[10px] bg-[#e5e7eb] min-h-screen">
+        <div className="lg:px-[64px] lg:pt-[40px] px-[20px] py-[20px]  lg:pb-[10px] bg-[#e5e7eb] min-h-screen">
             <ToastContainer containerId="pricing" />
             <Header /> 
             <div className="w-full max-w-[1440px] my-5 mx-auto">

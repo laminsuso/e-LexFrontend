@@ -187,7 +187,7 @@ if(e?.response?.data?.error){
   return (
     <>
       <ToastContainer containerId={"loginContainer"} />
-      <div className="lg:px-[64px] lg:pt-[40px] px-[20px] py-[20px] lg:pb-[10px] devbg bg-[#e5e7eb]">
+      <div className="lg:px-[64px] lg:pt-[40px] px-[20px] py-[20px] lg:pb-[10px]  bg-[#e5e7eb]">
         <div className="p-[24px] bg-[#ffffff] rounded-[16px]">
           <a href="/" className="max-w-[250px] flex justify-center items-center gap-1">
             <img

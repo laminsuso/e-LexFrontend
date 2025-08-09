@@ -83,6 +83,9 @@ const RequestSignaturesPage = () => {
       toast.error("Please select a document", { containerId: "requestSignature" })
     } else if (formData.recipients?.length == 0) {
       toast.error("Please select recipients", { containerId: "requestSignature" })
+    }else if(formData.recipients.filter(u=>u.willSign==true).length==0){
+      toast.error("Please select atleast one signer",{containerId:"requestSignature"})
+      return
     }
     if (file && formData.title && formData.recipients.length > 0) {
       setStep(2);
@@ -178,6 +181,24 @@ const RequestSignaturesPage = () => {
     );
   };
 
+
+  const handleChangeSign = (recipient, value) => {
+    try {
+      setFormData((prev) => {
+        const updatedRecipients = prev.recipients.map((r) =>
+          r.email === recipient.email ? { ...r, willSign: value } : r
+        );
+  
+        return {
+          ...prev,
+          recipients: updatedRecipients,
+        };
+      });
+    } catch (e) {
+      console.error("Error updating recipient:", e);
+    }
+  };
+
   const handleElementTouchEnd = () => {
     setDraggedElement(null);
   };
@@ -196,7 +217,7 @@ const RequestSignaturesPage = () => {
     } else {
       setFormData({
         ...formData,
-        recipients: [...formData.recipients, { email: selectedEmail }],
+        recipients: [...formData.recipients, { email: selectedEmail,willSign:true }],
       });
       setSelectedEmail("");
     }
@@ -556,7 +577,7 @@ const RequestSignaturesPage = () => {
   const handleSendRequest = async () => {
     try {
 
-      let check = formData.recipients.every(recipient => {
+      let check = formData.recipients.filter(u=>u.willSign==true).every(recipient => {
         return signatureElements.some(signature => signature.recipientEmail === recipient.email);
       });
       if (!check) {
@@ -754,6 +775,7 @@ const RequestSignaturesPage = () => {
           name: newRecipientName,
           phone: newRecipientPhone || "",
           address: newRecipientAddress || "",
+          willSign:true
         },
       ],
       newRecipientEmail: "",
@@ -952,6 +974,18 @@ const RequestSignaturesPage = () => {
                             </p>
                           )}
                         </div>
+
+                        <select
+  onChange={(e) => {
+    handleChangeSign(recipient, e.target.value === "true");
+  }}
+  value={recipient.willSign ? true : false}
+  id="documentAction"
+  name="documentAction"
+>
+  <option value="true">Needs to Sign</option>
+  <option value="false">Will Receive a Copy</option>
+</select>
                         <button
                           onClick={() => removeRecipient(index)}
                           className="text-red-500"
@@ -1051,7 +1085,7 @@ const RequestSignaturesPage = () => {
 
               <div className="mb-6">
                 <h4 className="font-medium mb-2">Recipients</h4>
-                {formData.recipients.map((recipient) => (
+                {formData?.recipients?.filter(u=>u.willSign==true)?.map((recipient) => (
                   <div
                     key={recipient.email}
                     className="mb-4 border-b pb-4 last:border-b-0"
@@ -1109,7 +1143,7 @@ const RequestSignaturesPage = () => {
               </div>
             </div>
 
-            {formData?.recipients?.map((val, i) => {
+            {formData?.recipients?.filter(u=>u.willSign==true)?.map((val, i) => {
               return <div key={i.toString()} className="flex justify-between items-center">
                 <div>
                   <p className="text-gray-600">{val?.email}</p>

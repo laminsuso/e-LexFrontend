@@ -13,6 +13,7 @@
     "@testing-library/user-event": "^13.5.0",
     "axios": "^1.8.4",
     "gapi-script": "^1.2.0",
+    "lucide-react": "^0.539.0",
     "pdfjs-dist": "^3.11.174",
     "react": "^19.1.0",
     "react-datepicker": "^8.2.1",
