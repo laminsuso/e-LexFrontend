@@ -16,9 +16,7 @@ export default function ViewPdf() {
     const fetchPdf = async () => {
       try {
         const token = localStorage.getItem("token");
-        const response = await axios.get(`${BASE_URL}/getSpecificDoc/${documentId}`, {
-          headers: { authorization: `Bearer ${token}` }
-        });
+        const response = await axios.get(`${BASE_URL}/getSpecificDoc/${documentId}`);
         const docData = response.data.doc;
         setFile(docData.file);
       } catch (error) {

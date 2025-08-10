@@ -135,7 +135,7 @@ setFormData({
     const initGoogleAPI = () => {
       gapi.load('auth2', function () {
         gapi.auth2.init({
-          client_id: '281111470474-rnp8cko6arftvfjpajsml0lqftuv2hgb.apps.googleusercontent.com', 
+          client_id: '87856424688-nhil5aauafjgorqfrnt432sf2gg66a4k.apps.googleusercontent.com', 
         });
       });
     };
@@ -149,7 +149,8 @@ try{
   auth2.signIn().then(async(googleUser) => {
     const profile = googleUser.getBasicProfile();
 
-
+console.log("PROFILE")
+console.log(profile)  
    
    
     let response = await axios.post(`${BASE_URL}/googleLogin`,{email:profile.getEmail()});
@@ -166,12 +167,16 @@ try{
     navigate("/admin"); 
   
   }).catch(error => {
-   
+    console.log("TRY CATCH ERROR")
+   console.log(error)
+
   });
 
  
 
 }catch(e){
+  console.log("ERROR OF GAPI")
+  console.log(e.message)
 if(e?.response?.data?.error){
   toast.error(e?.response?.data?.error,{containerId:"loginContainer"})
 }else{
@@ -182,7 +187,7 @@ if(e?.response?.data?.error){
   return (
     <>
       <ToastContainer containerId={"loginContainer"} />
-      <div className="lg:px-[64px] lg:pt-[40px] px-[20px] py-[20px] lg:pb-[10px] bg-[#e5e7eb]">
+      <div className="lg:px-[64px] lg:pt-[40px] px-[20px] py-[20px] lg:pb-[10px]  bg-[#e5e7eb]">
         <div className="p-[24px] bg-[#ffffff] rounded-[16px]">
           <a href="/" className="max-w-[250px] flex justify-center items-center gap-1">
             <img

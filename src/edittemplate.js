@@ -31,6 +31,8 @@ const recipientColors = [
 ];
 
 const EditTemplate = () => {
+  const [touchDraggedElement, setTouchDraggedElement] = useState(null);
+  const [touchStartPos, setTouchStartPos] = useState({ x: 0, y: 0 });
   const params = useParams();
   let id = params.documentId;
   const [currentTemplate, setCurrentTemplate] = useState();
@@ -103,16 +105,84 @@ const EditTemplate = () => {
     ];
     setSignatureElements(defaultElements);
   }, []);
+  const handleToolTouchStart = (type, email, options = {}) => (e) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+
+    setTouchDraggedElement({ type, email, options });
+    setTouchStartPos({
+      x: touch.clientX,
+      y: touch.clientY
+    });
+  };
+
+  const handleToolTouchMove = (e) => {
+    if (!touchDraggedElement) return;
+    e.preventDefault();
+    // This prevents scrolling while dragging
+  };
+
+  const handleToolTouchEnd = (e) => {
+    if (!touchDraggedElement) return;
+    e.preventDefault();
+
+    const touch = e.changedTouches[0];
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = touch.clientX - rect.left;
+    const y = touch.clientY - rect.top;
+
+    // Check if drop is within the document container
+    if (x >= 0 && x <= rect.width && y >= 0 && y <= rect.height) {
+      const { type, email, options } = touchDraggedElement;
+      createPlaceholder(type, email, x, y, options);
+    }
+
+    setTouchDraggedElement(null);
+    setTouchStartPos({ x: 0, y: 0 });
+  };
+
+  // Add touch event handlers for moving existing elements
+  const handleElementTouchStart = (e, id) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = touch.clientX - rect.left;
+    const y = touch.clientY - rect.top;
+    const element = signatureElements.find((el) => el.id === id);
+
+    setPositionOffset({ x: x - element.x, y: y - element.y });
+    setDraggedElement(id);
+  };
+
+  const handleElementTouchMove = (e) => {
+    if (!draggedElement) return;
+    e.preventDefault();
+
+    const touch = e.touches[0];
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = touch.clientX - rect.left - positionOffset.x;
+    const y = touch.clientY - rect.top - positionOffset.y;
+
+    setSignatureElements(
+      signatureElements.map((el) =>
+        el.id === draggedElement ? { ...el, x, y } : el
+      )
+    );
+  };
+
+  const handleElementTouchEnd = () => {
+    setDraggedElement(null);
+  };
 
   const handleAssignmentSubmit = () => {
     setSignatureElements((prev) =>
       prev.map((el) =>
         el.id === selectedElementId
           ? {
-              ...el,
-              recipientEmail: selectedEmail,
-              recipientRole: selectedRole,
-            }
+            ...el,
+            recipientEmail: selectedEmail,
+            recipientRole: selectedRole,
+          }
           : el
       )
     );
@@ -188,10 +258,10 @@ const EditTemplate = () => {
       prev.map((el) =>
         el.id === draggedElement
           ? {
-              ...el,
-              x: cursorX - positionOffset.x,
-              y: cursorY - positionOffset.y,
-            }
+            ...el,
+            x: cursorX - positionOffset.x,
+            y: cursorY - positionOffset.y,
+          }
           : el
       )
     );
@@ -236,11 +306,9 @@ const EditTemplate = () => {
   const fetchTemplate = async () => {
     try {
       let token = localStorage.getItem("token");
-      const res = await axios.get(`${BASE_URL}/getSpecificDoc/${id}`, {
-        headers: { authorization: `Bearer ${token}` },
-      });
+      const res = await axios.get(`${BASE_URL}/getSpecificDoc/${id}`);
       setCurrentTemplate(res.data.doc);
-     
+
       const containerWidth = containerRef.current?.offsetWidth || 800;
       setFile(res.data.doc.file);
       let transformedRecipients = res.data.doc.elements.map((val, i) => {
@@ -403,6 +471,9 @@ const EditTemplate = () => {
           e.stopPropagation();
           handleMouseDown(e, element.id);
         }}
+        onTouchStart={(e) => handleElementTouchStart(e, element.id)}
+        onTouchMove={handleElementTouchMove}
+        onTouchEnd={handleElementTouchEnd}
       >
         <div className="text-xs text-gray-500">{element.placeholderText}</div>
         {element.value && <div className="text-sm mt-1">{element.value}</div>}
@@ -448,6 +519,9 @@ const EditTemplate = () => {
         className="p-2 bg-gray-100 hover:bg-gray-200 text-sm cursor-move rounded mb-1"
         draggable
         onDragStart={handleToolDragStart(type)}
+        onTouchStart={handleToolTouchStart(type)}
+        onTouchMove={handleToolTouchMove}
+        onTouchEnd={handleToolTouchEnd}
       >
         {toolLabels[type]}
       </div>
@@ -470,7 +544,7 @@ const EditTemplate = () => {
     setRoles(roles.filter((role) => role.id !== id));
   };
 
- 
+
 
   const removeRecipient = (index) => {
     setRecipients(recipients.filter((_, i) => i !== index));
@@ -486,12 +560,15 @@ const EditTemplate = () => {
       <ToastContainer containerId={"editTemplate"} />
       <div className="admin-content">
         <div
-          className="flex h-screen bg-gray-100"
+          className="flex min-h-screen lg:flex-row flex-col bg-gray-100"
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onDrop={handleDocumentDrop}
           onDragOver={(e) => e.preventDefault()}
+          onTouchMove={handleElementTouchMove}
+          onTouchEnd={handleElementTouchEnd}
           ref={containerRef}
+          style={{ touchAction: 'none' }}
         >
           <div className="flex-1 p-4 overflow-auto relative">
             <button
@@ -501,11 +578,12 @@ const EditTemplate = () => {
               Next
             </button>
 
-            <div className="pdf-container">
-              <Document file={file} onLoadSuccess={onLoadSuccess}>
+            <div className="pdf-container w-full">
+              <Document file={file} onLoadSuccess={onLoadSuccess} className="w-full">
                 <Page
                   pageNumber={1}
-                  width={800}
+                  width={window.innerWidth < 1024 ? window.innerWidth - 32 : 800}
+                  className="w-full h-auto"
                   renderAnnotationLayer={false}
                   renderTextLayer={false}
                 />
@@ -523,13 +601,11 @@ const EditTemplate = () => {
                   {recipients.map((recipient, index) => (
                     <div
                       key={index}
-                      className={`flex items-center justify-between p-3 rounded border ${
-                        recipientColors[index % recipientColors.length]
-                      } ${
-                        selectedRecipientIndex === index
+                      className={`flex items-center justify-between p-3 rounded border ${recipientColors[index % recipientColors.length]
+                        } ${selectedRecipientIndex === index
                           ? "ring-2 ring-blue-500"
                           : ""
-                      }`}
+                        }`}
                       onClick={() => setSelectedRecipientIndex(index)}
                     >
                       <span className="text-sm">{recipient.email}</span>

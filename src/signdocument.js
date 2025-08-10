@@ -7,7 +7,29 @@ import axios from "axios";
 import { BASE_URL } from "./baseUrl";
 import { toast, ToastContainer } from "react-toastify";
 
-pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+// Multiple CDN fallbacks for PDF.js worker
+const PDF_WORKER_URLS = [
+  `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`,
+  `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`,
+  `//cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`
+];
+
+// Function to set PDF worker with fallback
+const setPDFWorker = () => {
+  let workerIndex = 0;
+  
+  const tryWorker = () => {
+    if (workerIndex < PDF_WORKER_URLS.length) {
+      pdfjs.GlobalWorkerOptions.workerSrc = PDF_WORKER_URLS[workerIndex];
+      workerIndex++;
+    }
+  };
+  
+  tryWorker();
+  return tryWorker;
+};
+
+const tryNextWorker = setPDFWorker();
 
 const FRONTEND_SIGNATURE_WIDTH = 200;
 const FRONTEND_SIGNATURE_HEIGHT = 80;
@@ -18,8 +40,9 @@ const FRONTEND_DATE_HEIGHT = 45;
 
 const SignDocumentPage = () => {
   const { documentId } = useParams();
+ 
   const [documentData, setDocumentData] = useState(null);
-  const [loading,setLoading]=useState(false)
+  const [loading, setLoading] = useState(false);
   const [currentProfile, setCurrentProfile] = useState("");
   const [file, setFile] = useState(null);
   const [signatureElements, setSignatureElements] = useState([]);
@@ -41,6 +64,8 @@ const SignDocumentPage = () => {
   const [pageNumber] = useState(1);
   const [currentUser, setCurrentUser] = useState("");
   const [loadingError, setLoadingError] = useState(null);
+  const [pdfLoadError, setPdfLoadError] = useState(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
@@ -49,6 +74,7 @@ const SignDocumentPage = () => {
   useEffect(() => {
     const getDocument = async () => {
       try {
+        
         const token = localStorage.getItem("token");
         let params = new URLSearchParams(location.search);
         let email = params.get("email");
@@ -57,15 +83,14 @@ const SignDocumentPage = () => {
           let responseone = await axios.post(`${BASE_URL}/registerAndLogin`, {
             email,
           });
+          console.log(responseone.data)
           localStorage.setItem("token", responseone.data.token);
           setCurrentUser(responseone.data.user);
           setPreference(responseone.data.preference);
           setCurrentProfile(responseone.data.profile);
+
           const response = await axios.get(
-            `${BASE_URL}/getSpecificDoc/${documentId}`,
-            {
-              headers: { authorization: `Bearer ${responseone.data.token}` },
-            }
+            `${BASE_URL}/getSpecificDoc/${documentId}`
           );
           setDocumentData(response.data.doc);
           setFile(response.data.doc.file);
@@ -81,15 +106,12 @@ const SignDocumentPage = () => {
           const getUser = await axios.get(`${BASE_URL}/getUser`, {
             headers: { authorization: `Bearer ${token}` },
           });
+          console.log(getUser.data)
           setCurrentUser(getUser.data.user);
           setPreference(getUser.data.preference);
           setCurrentProfile(getUser.data.profile);
           const response = await axios.get(
-            `${BASE_URL}/getSpecificDoc/${documentId}`,
-            {
-              headers: { authorization: `Bearer ${token}` },
-            }
-          );
+            `${BASE_URL}/getSpecificDoc/${documentId}`);
           const docData = response.data.doc;
           setDocumentData(docData);
           setFile(docData.file);
@@ -103,6 +125,8 @@ const SignDocumentPage = () => {
           setSignatureElements(elements);
         }
       } catch (error) {
+        
+        console.error("Document loading error:", error);
         setLoadingError("Failed to load document");
       }
     };
@@ -135,28 +159,109 @@ const SignDocumentPage = () => {
     }
   }, [activeElement, signatureType, currentProfile]);
 
+  // Enhanced PDF loading handlers
+  const onDocumentLoadSuccess = ({ numPages }) => {
+    console.log("PDF loaded successfully with", numPages, "pages");
+    setNumPages(numPages);
+    setPdfLoading(false);
+    setPdfLoadError(null);
+  };
+
+  const onDocumentLoadError = (error) => {
+    console.error("PDF loading error:", error);
+    setPdfLoading(false);
+    
+    // Try next worker if available
+    if (error.name === 'MissingPDFException' || error.message?.includes('worker')) {
+      tryNextWorker();
+      // Force re-render to try with new worker
+      setTimeout(() => {
+        setFile(prev => prev);
+      }, 100);
+    } else {
+      setPdfLoadError(`Failed to load PDF: ${error.message || 'Unknown error'}`);
+    }
+  };
+
+
+  const getEventCoordinates = (e) => {
+    const rect = canvasRef.current.getBoundingClientRect();
+    
+    // Handle touch events (mobile)
+    if (e.touches && e.touches[0]) {
+      return {
+        x: e.touches[0].clientX - rect.left,
+        y: e.touches[0].clientY - rect.top
+      };
+    }
+    
+    // Handle mouse events (desktop)
+    return {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
+    };
+  };
+
+
+
+  const onDocumentLoadProgress = ({ loaded, total }) => {
+    if (total > 0) {
+      const progress = Math.round((loaded / total) * 100);
+      console.log(`Loading progress: ${progress}%`);
+    }
+  };
+
+  // Function to validate and fix PDF URL
+  const validateAndFixPDFUrl = (url) => {
+    if (!url) return null;
+    
+    // Handle relative URLs
+    if (url.startsWith('/')) {
+      return `${BASE_URL}${url}`;
+    }
+    
+    // Handle URLs without protocol
+    if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('data:')) {
+      return `https://${url}`;
+    }
+    
+    return url;
+  };
+
   const startDrawing = (e) => {
     if (!activeElement || !canvasRef.current) return;
-    const rect = canvasRef.current.getBoundingClientRect();
+    
+    // Prevent scrolling on mobile when drawing
+    e.preventDefault();
+    
+    const coords = getEventCoordinates(e);
     canvasContext.beginPath();
-    canvasContext.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+    canvasContext.moveTo(coords.x, coords.y);
     setIsDrawing(true);
   };
 
   const draw = (e) => {
     if (!isDrawing || !canvasRef.current) return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    canvasContext.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+    
+    // Prevent scrolling on mobile when drawing
+    e.preventDefault();
+    
+    const coords = getEventCoordinates(e);
+    canvasContext.lineTo(coords.x, coords.y);
     canvasContext.stroke();
   };
 
-  const stopDrawing = () => {
+  const stopDrawing = (e) => {
+    if (e) e.preventDefault();
     canvasContext?.closePath();
     setIsDrawing(false);
   };
 
   const handleElementClick = (element) => {
-    if (element?.recipientEmail !== currentUser?.email) return;
+    if (element?.recipientEmail !== currentUser?.email){
+      toast.error(`Your current email is ${currentUser.email} it is for ${element.recipientEmail}`,{containerId:"signaturesign"})
+      return;
+    } 
     setActiveElement(element);
     setSignatureType(null);
     switch (element.type) {
@@ -279,7 +384,7 @@ const SignDocumentPage = () => {
   const handleSaveDocument = async () => {
     try {
       const token = localStorage.getItem("token");
-      setLoading(true)
+      setLoading(true);
       const embedResponse = await axios.post(
         `${BASE_URL}/embedElementsInPDF`,
         {
@@ -311,9 +416,9 @@ const SignDocumentPage = () => {
       toast.success("Document signed", {
         containerId: "signaturesign",
       });
-      window.location.href='/admin'
+      window.location.href = "/admin";
     } catch (error) {
-      setLoading(false)
+      setLoading(false);
       toast.error(error?.response?.data?.error || "Something went wrong", {
         containerId: "signaturesign",
       });
@@ -368,6 +473,7 @@ const SignDocumentPage = () => {
   
     return (
       <div
+        key={element.id}
         className={`border-2 p-2 cursor-pointer overflow-hidden flex flex-col ${typeStyles[element.type]}`}
         onClick={() => handleElementClick(element)}
         style={{
@@ -415,6 +521,93 @@ const SignDocumentPage = () => {
       </div>
     );
   };
+
+  // Enhanced PDF rendering with better error handling
+  const renderPDFDocument = () => {
+    const validatedUrl = validateAndFixPDFUrl(file);
+    
+    if (pdfLoadError) {
+      return (
+        <div className="flex flex-col items-center justify-center h-64 bg-red-50 border-2 border-red-200 rounded-lg">
+          <div className="text-red-600 text-center p-4">
+            <h3 className="font-semibold mb-2">PDF Loading Error</h3>
+            <p className="text-sm mb-4">{pdfLoadError}</p>
+            <button
+              onClick={() => {
+                setPdfLoadError(null);
+                setPdfLoading(true);
+                // Force re-render
+                setFile(prev => prev);
+              }}
+              className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+            >
+              Retry Loading
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (pdfLoading) {
+      return (
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+            <p>Loading PDF...</p>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <Document
+        file={validatedUrl}
+        onLoadSuccess={onDocumentLoadSuccess}
+        onLoadError={onDocumentLoadError}
+        onLoadProgress={onDocumentLoadProgress}
+        loading={
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+              <p>Loading PDF...</p>
+            </div>
+          </div>
+        }
+        error={
+          <div className="flex flex-col items-center justify-center h-64 bg-red-50 border-2 border-red-200 rounded-lg">
+            <div className="text-red-600 text-center p-4">
+              <h3 className="font-semibold mb-2">PDF Loading Failed</h3>
+              <p className="text-sm mb-4">Unable to load the PDF document</p>
+              <button
+                onClick={() => window.location.reload()}
+                className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+              >
+                Refresh Page
+              </button>
+            </div>
+          </div>
+        }
+      >
+        <Page
+          pageNumber={pageNumber}
+          width={800}
+          renderAnnotationLayer={false}
+          renderTextLayer={false}
+          loading={
+            <div className="flex items-center justify-center h-96">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            </div>
+          }
+          error={
+            <div className="flex items-center justify-center h-96 bg-gray-100">
+              <p className="text-gray-600">Failed to load page</p>
+            </div>
+          }
+        />
+      </Document>
+    );
+  };
+
   return (
     <div>
       <ToastContainer containerId={"signaturesign"} />
@@ -441,22 +634,24 @@ const SignDocumentPage = () => {
           ) : file ? (
             file.includes(".pdf") ? (
               <div className="relative">
-                <Document
-                  file={file}
-                  onLoadSuccess={({ numPages }) => setNumPages(numPages)}
-                >
-                  <Page
-                    pageNumber={pageNumber}
-                    width={800}
-                    renderAnnotationLayer={false}
-                    renderTextLayer={false}
-                  />
-                </Document>
+                {renderPDFDocument()}
                 {signatureElements.map(renderFieldPreview)}
               </div>
             ) : (
               <div className="relative">
-                <img src={file} alt="Document" className="max-w-full h-auto" />
+                <img 
+                  src={file} 
+                  alt="Document" 
+                  className="max-w-full h-auto"
+                  onError={(e) => {
+                    console.error("Image loading error:", e);
+                    e.target.style.display = 'none';
+                    e.target.nextSibling.style.display = 'block';
+                  }}
+                />
+                <div style={{display: 'none'}} className="text-red-500 text-center mt-8">
+                  Failed to load document image
+                </div>
                 {signatureElements.map(renderFieldPreview)}
               </div>
             )
@@ -466,9 +661,10 @@ const SignDocumentPage = () => {
             </div>
           )}
 
+          {/* Modal for editing elements - keeping your existing modal code */}
           {activeElement && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white p-6 rounded-lg w-96">
+              <div className="bg-white p-6 rounded-lg w-96 max-h-[90vh] overflow-y-auto">
                 <h3 className="text-xl font-bold mb-4">
                   {activeElement.label}
                 </h3>
@@ -477,12 +673,7 @@ const SignDocumentPage = () => {
                   <>
                     <div className="flex border-b mb-4">
                       <button
-                        disabled={
-                          !(
-                            preference?.allowed_signature_types === "draw" ||
-                            preference?.allowed_signature_types === "all"
-                          )
-                        }
+                       
                         className={`flex-1 py-2 ${
                           signatureType === "draw"
                             ? "border-b-2 border-blue-500"
@@ -493,11 +684,8 @@ const SignDocumentPage = () => {
                         Draw
                       </button>
                       <button
-                        disabled={
-                          !["upload", "all"].includes(
-                            preference?.allowed_signature_types
-                          )
-                        }
+
+                      
                         className={`flex-1 py-2 ${
                           signatureType === "image"
                             ? "border-b-2 border-blue-500"
@@ -508,11 +696,8 @@ const SignDocumentPage = () => {
                         Upload
                       </button>
                       <button
-                        disabled={
-                          !["type", "all"].includes(
-                            preference?.allowed_signature_types
-                          )
-                        }
+
+            
                         className={`flex-1 py-2 ${
                           signatureType === "typed"
                             ? "border-b-2 border-blue-500"
@@ -525,16 +710,29 @@ const SignDocumentPage = () => {
                     </div>
 
                     {signatureType === "draw" && (
-                      <canvas
-                        ref={canvasRef}
-                        width={FRONTEND_SIGNATURE_WIDTH}
-                        height={FRONTEND_SIGNATURE_HEIGHT}
-                        className="border mb-4"
-                        onMouseDown={startDrawing}
-                        onMouseMove={draw}
-                        onMouseUp={stopDrawing}
-                        onMouseLeave={stopDrawing}
-                      />
+                      <div className="mb-4">
+                        <canvas
+                          ref={canvasRef}
+                          width={FRONTEND_SIGNATURE_WIDTH}
+                          height={FRONTEND_SIGNATURE_HEIGHT}
+                          className="border mb-2"
+                          onMouseDown={startDrawing}
+                          onMouseMove={draw}
+                          onMouseUp={stopDrawing}
+                          onMouseLeave={stopDrawing}
+
+                          onTouchStart={startDrawing}
+                          onTouchMove={draw}
+                          onTouchEnd={stopDrawing}
+
+                        />
+                        <button
+                          onClick={handleClearCanvas}
+                          className="bg-gray-300 text-gray-700 px-3 py-1 rounded text-sm"
+                        >
+                          Clear
+                        </button>
+                      </div>
                     )}
 
                     {signatureType === "image" && (
@@ -695,11 +893,7 @@ const SignDocumentPage = () => {
                   <button
                     onClick={handleSave}
                     className="bg-blue-600 text-white px-4 py-2 rounded"
-                    disabled={
-                      activeElement.type === "signature" &&
-                      signatureType === "typed" &&
-                      !inputValue
-                    }
+                   
                   >
                     Save
                   </button>
@@ -710,17 +904,19 @@ const SignDocumentPage = () => {
         </div>
       </div>
 
-      {loading?<div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50">
-  <div className="bg-white p-8 rounded-xl shadow-xl w-full max-w-2xl mx-4 text-center">
-    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-    <h3 className="text-2xl font-semibold text-gray-900 mb-2">
-      Updating Document
-    </h3>
-    <p className="text-gray-600">
-      Please wait while the document is being updated
-    </p>
-  </div>
-</div>:``}
+      {loading && (
+        <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white p-8 rounded-xl shadow-xl w-full max-w-2xl mx-4 text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <h3 className="text-2xl font-semibold text-gray-900 mb-2">
+              Updating Document
+            </h3>
+            <p className="text-gray-600">
+              Please wait while the document is being updated
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
