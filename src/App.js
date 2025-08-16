@@ -55,7 +55,7 @@ function App() {
         </div>
     </section>
 
-    <section className="py-12 bg-slate-100">
+    {/* <section className="py-12 bg-slate-100">
         <div className="container mx-auto px-6">
             <p className="text-center text-sm font-semibold text-slate-500 uppercase tracking-wider">Trusted by over 10,000 innovative companies</p>
             <div className="mt-6 flex flex-wrap justify-center items-center gap-x-8 gap-y-4 md:gap-x-12">
@@ -66,7 +66,7 @@ function App() {
                 <img src="https://placehold.co/120x40/FFFFFF/CCCCCC?text=Momentum" alt="Momentum Logo" className="h-8 opacity-60 hover:opacity-100 transition-opacity" />
             </div>
         </div>
-    </section>
+    </section> */}
     <section className="py-20 md:py-28">
         <div className="container mx-auto px-6">
             <div className="text-center max-w-3xl mx-auto">
@@ -229,7 +229,7 @@ function App() {
 
    
 
-    <section className="py-20 md:py-28">
+    {/* <section className="py-20 md:py-28">
         <div className="container mx-auto px-6">
             <div className="text-center max-w-3xl mx-auto">
                 <img src="https://placehold.co/120x30/CCCCCC/FFFFFF?text=G2+Top+Performer" alt="Award logo" className="mx-auto h-12" />
@@ -269,7 +269,7 @@ function App() {
                 </div>
             </div>
         </div>
-    </section>
+    </section> */}
 
     <section className="bg-white">
         <div className="container mx-auto px-6 py-20 md:py-24">
