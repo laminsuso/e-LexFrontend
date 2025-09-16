@@ -25,6 +25,7 @@ const CreateTemplate = () => {
   const [touchDraggedElement, setTouchDraggedElement] = useState(null);
   const [touchStartPos, setTouchStartPos] = useState({ x: 0, y: 0 });
   const [file, setFile] = useState(null);
+  const [pageNumber, setPageNumber] = useState(1);
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
     title: "",
@@ -156,10 +157,7 @@ const CreateTemplate = () => {
       return;
     }
     let alreadySelected = signatureElements.find(u => u.recipientRole == selectedRole)
-    if (alreadySelected) {
-      toast.error("Role already assigned", { containerId: "template" })
-      return
-    }
+   
     setSignatureElements((prev) =>
       prev.map((el) =>
         el.id === selectedElementId
@@ -202,16 +200,15 @@ const CreateTemplate = () => {
       type,
       x,
       y,
+      pageNumber: pageNumber, // Add current page number
       value: "",
       placeholderText: getPlaceholderText(type, options),
       isPlaceholder: true,
       ...options,
     };
-
-
+  
     setSignatureElements((prev) => [...prev, newElement]);
   };
-
   useEffect(() => {
     getContacts();
   }, []);
@@ -654,25 +651,48 @@ const CreateTemplate = () => {
               </button>
 
               {file?.type === "application/pdf" ? (
-                <div className="pdf-container">
-                  <Document file={file} onLoadSuccess={onLoadSuccess} className="w-full">
-                    <Page
-                      pageNumber={1}
-                      width={window.innerWidth < 1024 ? window.innerWidth - 32 : 800}
-                      renderAnnotationLayer={false}
-                      renderTextLayer={false}
-                    />
-                  </Document>
-                </div>
-              ) : (
-                <img
-                  src={URL.createObjectURL(file)}
-                  alt="Document"
-                  className="max-w-full h-auto"
-                />
-              )}
+  <div className="pdf-container w-full">
+    {/* Page Navigation */}
+    {numPages > 1 && (
+      <div className="flex items-center justify-center gap-4 mb-4 bg-white p-2 rounded shadow sticky top-0 z-40">
+        <button
+          onClick={() => setPageNumber(prev => Math.max(prev - 1, 1))}
+          disabled={pageNumber <= 1}
+          className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
+        >
+          Previous
+        </button>
+        <span className="text-sm font-medium">
+          Page {pageNumber} of {numPages}
+        </span>
+        <button
+          onClick={() => setPageNumber(prev => Math.min(prev + 1, numPages))}
+          disabled={pageNumber >= numPages}
+          className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
+        >
+          Next
+        </button>
+      </div>
+    )}
+    
+    <Document file={file} onLoadSuccess={onLoadSuccess} className="w-full">
+      <Page
+        pageNumber={pageNumber}
+        width={window.innerWidth < 1024 ? window.innerWidth - 32 : 800}
+        renderAnnotationLayer={false}
+        renderTextLayer={false}
+      />
+    </Document>
+  </div>
+) : (
+  <img
+    src={URL.createObjectURL(file)}
+    alt="Document"
+    className="max-w-full h-auto"
+  />
+)}
 
-              {signatureElements.map((element) => renderFieldPreview(element))}
+{signatureElements?.filter(element => element?.pageNumber === pageNumber)?.map((element) => renderFieldPreview(element))}
             </div>
 
             <div className="lg:w-80 w-full bg-white p-4 shadow-lg overflow-y-auto">

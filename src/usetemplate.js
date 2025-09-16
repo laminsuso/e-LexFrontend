@@ -37,6 +37,7 @@ const UseTemplate = () => {
   const params = useParams();
   let id = params.documentId;
   const [loading, setLoading] = useState(false);
+  const [pageNumber, setPageNumber] = useState(1);
   const [showAddSignerModal, setShowAddSignerModal] = useState(true);
   const [showAddContactModal, setShowAddContactModal] = useState(false);
   const [currentRole, setCurrentRole] = useState("");
@@ -240,6 +241,7 @@ const UseTemplate = () => {
       value: "",
       placeholderText: getPlaceholderText(type, options),
       isPlaceholder: true,
+      pageNumber: pageNumber, // Add this line
       recipientEmail:
         selectedRecipientIndex !== null
           ? recipients[selectedRecipientIndex].email
@@ -248,7 +250,6 @@ const UseTemplate = () => {
     };
     setSignatureElements((prev) => [...prev, newElement]);
   };
-
   const getPlaceholderText = (type, options) => {
     const texts = {
       [FIELD_TYPES.SIGNATURE]: "Signature",
@@ -965,21 +966,46 @@ const UseTemplate = () => {
             </button>
 
             <div className="pdf-container">
-              <Document file={file} onLoadSuccess={onLoadSuccess}>
-                <Page
-                  pageNumber={1}
-                  width={
-                    isMobile
-                      ? window.innerWidth - 32
-                      : Math.min(containerDimensions.width, 800)
-                  }
-                  renderAnnotationLayer={false}
-                  renderTextLayer={false}
-                />
-              </Document>
+            <Document file={file} onLoadSuccess={onLoadSuccess}>
+  {/* Add Page Navigation */}
+  {numPages > 1 && (
+    <div className="flex items-center justify-center gap-4 mb-4 bg-white p-2 rounded shadow sticky top-0 z-40">
+      <button
+        onClick={() => setPageNumber(prev => Math.max(prev - 1, 1))}
+        disabled={pageNumber <= 1}
+        className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
+      >
+        Previous
+      </button>
+      <span className="text-sm font-medium">
+        Page {pageNumber} of {numPages}
+      </span>
+      <button
+        onClick={() => setPageNumber(prev => Math.min(prev + 1, numPages))}
+        disabled={pageNumber >= numPages}
+        className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
+      >
+        Next
+      </button>
+    </div>
+  )}
+  
+  <Page
+    pageNumber={pageNumber}
+    width={
+      isMobile
+        ? window.innerWidth - 32
+        : Math.min(containerDimensions.width, 800)
+    }
+    renderAnnotationLayer={false}
+    renderTextLayer={false}
+  />
+</Document>
             </div>
 
-            {signatureElements.map((element) => renderFieldPreview(element))}
+            {signatureElements?.filter(element => 
+  element.pageNumber === pageNumber || !element.pageNumber // Show elements without pageNumber for backward compatibility
+)?.map((element) => renderFieldPreview(element))}
           </div>
 
           <div className="lg:w-80 w-full bg-white p-4 shadow-lg overflow-y-auto lg:max-h-screen max-h-[300px]">

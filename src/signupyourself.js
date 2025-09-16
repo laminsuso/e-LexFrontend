@@ -243,11 +243,11 @@ const SignYourselfPage = () => {
       type,
       x,
       y,
+      pageNumber: pageNumber, // Add current page number
       ...data,
     };
     setSignatureElements((prev) => [...prev, newElement]);
   };
-
   const deleteElement = (id) => {
     setSignatureElements((prev) => prev.filter((el) => el.id !== id));
   };
@@ -640,32 +640,55 @@ const SignYourselfPage = () => {
               </button>
 
               {file?.type === "application/pdf" ? (
-                <div className="pdf-container">
-                  <Document
-                    file={file}
-                    onLoadSuccess={({ numPages }) => setNumPages(numPages)}
-                    onLoadError={console.error}
-                    loading="Loading PDF..."
-                  >
-                    <Page
-                      pageNumber={pageNumber}
-                      width={
-                        isMobile
-                          ? window.innerWidth - 32
-                          : Math.min(containerDimensions.width, 800)
-                      }
-                      renderAnnotationLayer={false}
-                      renderTextLayer={false}
-                    />
-                  </Document>
-                </div>
-              ) : (
-                <img
-                  src={URL.createObjectURL(file)}
-                  alt="Document"
-                  className="max-w-full h-auto"
-                />
-              )}
+  <div className="pdf-container">
+    {/* Page Navigation */}
+    {numPages > 1 && (
+      <div className="flex items-center justify-center gap-4 mb-4 bg-white p-2 rounded shadow">
+        <button
+          onClick={() => setPageNumber(prev => Math.max(prev - 1, 1))}
+          disabled={pageNumber <= 1}
+          className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
+        >
+          Previous
+        </button>
+        <span className="text-sm">
+          Page {pageNumber} of {numPages}
+        </span>
+        <button
+          onClick={() => setPageNumber(prev => Math.min(prev + 1, numPages))}
+          disabled={pageNumber >= numPages}
+          className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
+        >
+          Next
+        </button>
+      </div>
+    )}
+    
+    <Document
+      file={file}
+      onLoadSuccess={({ numPages }) => setNumPages(numPages)}
+      onLoadError={console.error}
+      loading="Loading PDF..."
+    >
+      <Page
+        pageNumber={pageNumber}
+        width={
+          isMobile
+            ? window.innerWidth - 32
+            : Math.min(containerDimensions.width, 800)
+        }
+        renderAnnotationLayer={false}
+        renderTextLayer={false}
+      />
+    </Document>
+  </div>
+) : (
+  <img
+    src={URL.createObjectURL(file)}
+    alt="Document"
+    className="max-w-full h-auto"
+  />
+)}
 
               {signatureElements.map((element) => (
                 <div

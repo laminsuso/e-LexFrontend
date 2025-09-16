@@ -41,6 +41,7 @@ const RequestSignaturesPage = () => {
   const [emails, setEmails] = useState([]);
   const [step, setStep] = useState(1);
   const [file, setFile] = useState(null);
+  const [pageNumber, setPageNumber] = useState(1);
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
     title: "",
@@ -68,12 +69,13 @@ const RequestSignaturesPage = () => {
   const containerRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  const handleFileChange = (e) => {
-    const selectedFile = e.target.files[0];
-    if (selectedFile && /\.(pdf|png|jpg|jpeg|docx)$/i.test(selectedFile.name)) {
-      setFile(selectedFile);
-    }
-  };
+ const handleFileChange = (e) => {
+  const selectedFile = e.target.files[0];
+  if (selectedFile && /\.(pdf|png|jpg|jpeg|docx)$/i.test(selectedFile.name)) {
+    setFile(selectedFile);
+    setPageNumber(1); // Reset to first page when new file is selected
+  }
+};
 
   const handleFormSubmit = async (e) => {
     e.preventDefault();
@@ -473,6 +475,7 @@ const RequestSignaturesPage = () => {
       type,
       x,
       y,
+      pageNumber: pageNumber, // Add current page number
       recipientEmail: email,
       placeholderText: getPlaceholderText(type, email, options),
       isPlaceholder: true,
@@ -481,7 +484,6 @@ const RequestSignaturesPage = () => {
     };
     setSignatureElements((prev) => [...prev, newElement]);
   };
-
   const getPlaceholderText = (type, email, options) => {
     const texts = {
       [FIELD_TYPES.SIGNATURE]: `Signature for ${email}`,
@@ -1033,28 +1035,50 @@ const RequestSignaturesPage = () => {
               </button>
 
               {file?.type === "application/pdf" ? (
-                <div className="pdf-containerpdf-container w-full">
-                  <Document
-                    file={file}
-                    onLoadSuccess={({ numPages }) => setNumPages(numPages)}
-                    onLoadError={console.error}
-                    loading="Loading PDF..."
-                    className="w-full"
-                  >
-                    <Page
-                      pageNumber={1}
-                      width={window.innerWidth < 1024 ? window.innerWidth - 32 : 800}
-                      className="w-full h-auto"
-                      renderAnnotationLayer={false}
-                      renderTextLayer={false}
-                    />
-                  </Document>
-                </div>
-              ) : (
-                ''
-              )}
-
-              {signatureElements.map((element) => (
+  <div className="pdf-containerpdf-container w-full">
+    {/* Page Navigation */}
+    {numPages > 1 && (
+      <div className="flex items-center justify-center gap-4 mb-4 bg-white p-2 rounded shadow sticky top-0 z-40">
+        <button
+          onClick={() => setPageNumber(prev => Math.max(prev - 1, 1))}
+          disabled={pageNumber <= 1}
+          className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
+        >
+          Previous
+        </button>
+        <span className="text-sm font-medium">
+          Page {pageNumber} of {numPages}
+        </span>
+        <button
+          onClick={() => setPageNumber(prev => Math.min(prev + 1, numPages))}
+          disabled={pageNumber >= numPages}
+          className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
+        >
+          Next
+        </button>
+      </div>
+    )}
+    
+    <Document
+      file={file}
+      onLoadSuccess={({ numPages }) => setNumPages(numPages)}
+      onLoadError={console.error}
+      loading="Loading PDF..."
+      className="w-full"
+    >
+      <Page
+        pageNumber={pageNumber}
+        width={window.innerWidth < 1024 ? window.innerWidth - 32 : 800}
+        className="w-full h-auto"
+        renderAnnotationLayer={false}
+        renderTextLayer={false}
+      />
+    </Document>
+  </div>
+) : (
+  ''
+)}
+              {signatureElements?.filter(element => element?.pageNumber === pageNumber)?.map((element) => (
                 <div
                   key={element.id}
                   className="absolute"

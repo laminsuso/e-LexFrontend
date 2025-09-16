@@ -45,6 +45,7 @@ const SignDocumentPage = () => {
   const [loading, setLoading] = useState(false);
   const [currentProfile, setCurrentProfile] = useState("");
   const [file, setFile] = useState(null);
+  const [pageNumber, setPageNumber] = useState(1); // Remove the constant declaration
   const [signatureElements, setSignatureElements] = useState([]);
   const [activeElement, setActiveElement] = useState(null);
   const [inputValue, setInputValue] = useState("");
@@ -61,7 +62,7 @@ const SignDocumentPage = () => {
     send_in_order: "",
   });
   const [numPages, setNumPages] = useState(1);
-  const [pageNumber] = useState(1);
+ 
   const [currentUser, setCurrentUser] = useState("");
   const [loadingError, setLoadingError] = useState(null);
   const [pdfLoadError, setPdfLoadError] = useState(null);
@@ -561,50 +562,73 @@ const SignDocumentPage = () => {
 
     return (
       <Document
-        file={validatedUrl}
-        onLoadSuccess={onDocumentLoadSuccess}
-        onLoadError={onDocumentLoadError}
-        onLoadProgress={onDocumentLoadProgress}
+      file={validatedUrl}
+      onLoadSuccess={onDocumentLoadSuccess}
+      onLoadError={onDocumentLoadError}
+      onLoadProgress={onDocumentLoadProgress}
+      loading={
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+            <p>Loading PDF...</p>
+          </div>
+        </div>
+      }
+      error={
+        <div className="flex flex-col items-center justify-center h-64 bg-red-50 border-2 border-red-200 rounded-lg">
+          <div className="text-red-600 text-center p-4">
+            <h3 className="font-semibold mb-2">PDF Loading Failed</h3>
+            <p className="text-sm mb-4">Unable to load the PDF document</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+            >
+              Refresh Page
+            </button>
+          </div>
+        </div>
+      }
+    >
+      {/* Add Page Navigation */}
+      {numPages > 1 && (
+        <div className="flex items-center justify-center gap-4 mb-4 bg-white p-2 rounded shadow sticky top-0 z-40">
+          <button
+            onClick={() => setPageNumber(prev => Math.max(prev - 1, 1))}
+            disabled={pageNumber <= 1}
+            className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
+          >
+            Previous
+          </button>
+          <span className="text-sm font-medium">
+            Page {pageNumber} of {numPages}
+          </span>
+          <button
+            onClick={() => setPageNumber(prev => Math.min(prev + 1, numPages))}
+            disabled={pageNumber >= numPages}
+            className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
+          >
+            Next
+          </button>
+        </div>
+      )}
+      
+      <Page
+        pageNumber={pageNumber}
+        width={800}
+        renderAnnotationLayer={false}
+        renderTextLayer={false}
         loading={
-          <div className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-              <p>Loading PDF...</p>
-            </div>
+          <div className="flex items-center justify-center h-96">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
           </div>
         }
         error={
-          <div className="flex flex-col items-center justify-center h-64 bg-red-50 border-2 border-red-200 rounded-lg">
-            <div className="text-red-600 text-center p-4">
-              <h3 className="font-semibold mb-2">PDF Loading Failed</h3>
-              <p className="text-sm mb-4">Unable to load the PDF document</p>
-              <button
-                onClick={() => window.location.reload()}
-                className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
-              >
-                Refresh Page
-              </button>
-            </div>
+          <div className="flex items-center justify-center h-96 bg-gray-100">
+            <p className="text-gray-600">Failed to load page</p>
           </div>
         }
-      >
-        <Page
-          pageNumber={pageNumber}
-          width={800}
-          renderAnnotationLayer={false}
-          renderTextLayer={false}
-          loading={
-            <div className="flex items-center justify-center h-96">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-            </div>
-          }
-          error={
-            <div className="flex items-center justify-center h-96 bg-gray-100">
-              <p className="text-gray-600">Failed to load page</p>
-            </div>
-          }
-        />
-      </Document>
+      />
+    </Document>
     );
   };
 
@@ -635,7 +659,9 @@ const SignDocumentPage = () => {
             file.includes(".pdf") ? (
               <div className="relative">
                 {renderPDFDocument()}
-                {signatureElements.map(renderFieldPreview)}
+                {signatureElements.filter(element => 
+  element.pageNumber === pageNumber || !element.pageNumber // Show elements without pageNumber for backward compatibility
+).map(renderFieldPreview)}
               </div>
             ) : (
               <div className="relative">
