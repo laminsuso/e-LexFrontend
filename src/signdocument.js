@@ -300,26 +300,36 @@ export default function SignDocumentPage() {
   };
 
   /* ---------- Typed signature renderer (blue cursive) ---------- */
-  const convertTextToSignature = (text) => {
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    canvas.width = FRONTEND_SIGNATURE_WIDTH;
-    canvas.height = FRONTEND_SIGNATURE_HEIGHT;
+  const SIGNATURE_BLUE = "rgb(37, 99, 235)";
 
-    let size = 40; // start large, shrink if needed
-    ctx.textBaseline = "middle";
-    ctx.textAlign = "center";
-    ctx.fillStyle = SIGNATURE_BLUE;
+const convertTextToSignature = (text) => {
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+
+  const W = 200;  // FRONTEND_SIGNATURE_WIDTH
+  const H = 80;   // FRONTEND_SIGNATURE_HEIGHT
+  canvas.width = W;
+  canvas.height = H;
+
+  // baseline setup
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "center";
+  ctx.fillStyle = SIGNATURE_BLUE;
+
+  // start large and shrink until it fits
+  let size = 40;
+  ctx.font = `italic ${size}px "Great Vibes", cursive`;
+  const maxWidth = W - 10;
+
+  while (ctx.measureText(text).width > maxWidth && size > 18) {
+    size -= 2;
     ctx.font = `italic ${size}px "Great Vibes", cursive`;
+  }
 
-    const maxWidth = canvas.width - 10;
-    while (ctx.measureText(text).width > maxWidth && size > 18) {
-      size -= 2;
-      ctx.font = `italic ${size}px "Great Vibes", cursive`;
-    }
-    ctx.fillText(text, canvas.width / 2, canvas.height / 2);
-    return canvas.toDataURL("image/png");
-  };
+  ctx.fillText(text, W / 2, H / 2);
+  return canvas.toDataURL("image/png");
+};
+
 
   /* ---------- Save element value ---------- */
   const handleSave = () => {
@@ -720,26 +730,32 @@ export default function SignDocumentPage() {
                     )}
 
                     {signatureType === "typed" && (
-                      <>
-                        <input
-                          type="text"
-                          value={inputValue}
-                          onChange={(e) => setInputValue(e.target.value)}
-                          className="w-full p-2 border rounded mb-4"
-                          placeholder="Type your signature"
-                        />
-                        {inputValue && (
-                          <div className="text-center border p-2">
-                            <img
-                              src={convertTextToSignature(inputValue)}
-                              alt="Signature Preview"
-                              className="mx-auto"
-                              style={{ width: FRONTEND_SIGNATURE_WIDTH, height: FRONTEND_SIGNATURE_HEIGHT }}
-                            />
-                          </div>
-                        )}
-                      </>
-                    )}
+  <>
+    <input
+      type="text"
+      value={inputValue}
+      onChange={(e) => setInputValue(e.target.value)}
+      className="w-full p-2 border rounded mb-4"
+      placeholder="Type your signature"
+    />
+
+    {/* Force an image preview from the canvas (blue). */}
+    <div className="text-center border p-2">
+      <img
+        src={convertTextToSignature(inputValue || " ")}
+        alt="Signature Preview"
+        width={FRONTEND_SIGNATURE_WIDTH}
+        height={FRONTEND_SIGNATURE_HEIGHT}
+        style={{
+          display: "inline-block",
+          filter: "none",
+          mixBlendMode: "normal",
+        }}
+      />
+    </div>
+  </>
+)}
+
                   </>
                 )}
 
