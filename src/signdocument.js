@@ -35,7 +35,7 @@ const FRONTEND_SIGNATURE_HEIGHT = 80;
 const FRONTEND_TEXT_WIDTH = 200;
 const FRONTEND_TEXT_HEIGHT = 40;
 const FRONTEND_DATE_WIDTH = 120;
-const FRONTEND_DATE_HEIGHT = 45;
+const FRONTEND_DATE_HEIGHT = 30;
 
 const SIGNATURE_BLUE = "rgb(37, 99, 235)";
 
@@ -72,10 +72,10 @@ const validateAndFixPDFUrl = (url) => {
   return url;
 };
 
-/* Blue, cursive typed signature → PNG data URL */
+// BLUE typed signature → PNG data URL
 const convertTextToSignature = (text) => {
-  const W = FRONTEND_SIGNATURE_WIDTH;   // 200
-  const H = FRONTEND_SIGNATURE_HEIGHT;  // 80
+  const W = FRONTEND_SIGNATURE_WIDTH;
+  const H = FRONTEND_SIGNATURE_HEIGHT;
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
   canvas.width = W;
@@ -85,16 +85,13 @@ const convertTextToSignature = (text) => {
   ctx.textAlign = "center";
   ctx.fillStyle = SIGNATURE_BLUE;
 
-  // start large and shrink until it fits
   let size = 40;
   ctx.font = `italic ${size}px "Great Vibes", cursive`;
   const maxWidth = W - 10;
-
   while (ctx.measureText(text).width > maxWidth && size > 18) {
     size -= 2;
     ctx.font = `italic ${size}px "Great Vibes", cursive`;
   }
-
   ctx.fillText(text, W / 2, H / 2);
   return canvas.toDataURL("image/png");
 };
@@ -168,7 +165,7 @@ export default function SignDocumentPage() {
     })();
   }, [documentId, location.search]);
 
-  /* ---------- Prefetch PDF bytes (robust viewer) ---------- */
+  /* ---------- Prefetch PDF bytes ---------- */
   useEffect(() => {
     if (!file) return;
     const url = validateAndFixPDFUrl(file);
@@ -187,11 +184,11 @@ export default function SignDocumentPage() {
         console.error("PDF prefetch failed:", err);
         setPdfLoading(false);
         setPdfLoadError(err?.message || "Failed to load PDF");
-        setForceImage(true); // last-resort <img> fallback
+        setForceImage(true);
       });
   }, [file]);
 
-  /* ---------- Drawing setup (Hi-DPI canvas) ---------- */
+  /* ---------- Drawing setup (Hi-DPI) ---------- */
   useEffect(() => {
     if (!(canvasRef.current && activeElement?.type === "signature" && signatureType === "draw"))
       return;
@@ -243,7 +240,7 @@ export default function SignDocumentPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [numPages]);
 
-  /* ---------- Drawing handlers ---------- */
+  /* ---------- Draw handlers ---------- */
   const getEventCoordinates = (e) => {
     const rect = canvasRef.current.getBoundingClientRect();
     if (e.touches && e.touches[0]) {
@@ -251,7 +248,6 @@ export default function SignDocumentPage() {
     }
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   };
-
   const startDrawing = (e) => {
     if (!activeElement || !ctxRef.current) return;
     e.preventDefault();
@@ -262,7 +258,6 @@ export default function SignDocumentPage() {
     ctx.moveTo(x, y);
     setIsDrawing(true);
   };
-
   const draw = (e) => {
     if (!isDrawing || !ctxRef.current) return;
     e.preventDefault();
@@ -272,7 +267,6 @@ export default function SignDocumentPage() {
     ctx.lineTo(x, y);
     ctx.stroke();
   };
-
   const stopDrawing = (e) => {
     if (e) e.preventDefault();
     ctxRef.current?.closePath();
@@ -280,10 +274,6 @@ export default function SignDocumentPage() {
   };
 
   /* ---------- Element click / edit ---------- */
-  const [inputValue, setInputValue] = useState("");
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [signatureType, setSignatureType] = useState(undefined); // draw | image | typed
-
   const handleElementClick = (element) => {
     if (element?.recipientEmail && element.recipientEmail !== currentUser?.email) {
       toast.error(
@@ -344,11 +334,11 @@ export default function SignDocumentPage() {
     switch (activeElement.type) {
       case "signature":
         if (signatureType === "draw") {
-          value = canvasRef.current?.toDataURL("image/png") || null;   // draw → blue png
+          value = canvasRef.current?.toDataURL("image/png") || null;        // draw → BLUE png
         } else if (signatureType === "image") {
-          value = inputValue || currentProfile?.signature || null;     // uploaded image
+          value = inputValue || currentProfile?.signature || null;          // uploaded image
         } else {
-          value = inputValue ? convertTextToSignature(inputValue) : null; // typed → blue png
+          value = inputValue ? convertTextToSignature(inputValue) : null;   // typed → BLUE png
         }
         break;
       case "checkbox":
@@ -430,7 +420,7 @@ export default function SignDocumentPage() {
     }
   };
 
-  /* ---------- Field preview (render only on current page) ---------- */
+  /* ---------- Field preview ---------- */
   const renderFieldPreview = (element) => {
     const p = Number(element.page ?? element.pageNumber);
     if (!Number.isFinite(p) || p !== pageNumber) return null;
@@ -464,13 +454,12 @@ export default function SignDocumentPage() {
         className={`border-2 p-2 cursor-pointer overflow-hidden flex flex-col ${typeStyles[element.type]}`}
         onClick={() => handleElementClick(element)}
         style={{
+          position: "absolute",
           left: `${element.x}px`,
           top: `${element.y}px`,
-          position: "absolute",
           width: `${width}px`,
           minHeight: `${height}px`,
         }}
-        aria-label={`${element.type} field for ${element.recipientEmail || "recipient"}`}
       >
         <div className="flex-1">
           {element.value ? (
@@ -486,9 +475,7 @@ export default function SignDocumentPage() {
               <span className="text-sm block break-words">{element.value}</span>
             )
           ) : (
-            <span className="text-gray-500 text-sm block break-words">
-              {element.label || element.type}
-            </span>
+            <span className="text-gray-500 text-sm block break-words">{element.label || element.type}</span>
           )}
         </div>
 
@@ -517,7 +504,6 @@ export default function SignDocumentPage() {
       );
     }
     if (forceImage) {
-      // last-resort fallback — single page <img>
       return <img src={validateAndFixPDFUrl(file)} alt="Document" className="max-w-full h-auto" />;
     }
     if (!pdfData) return null;
@@ -567,7 +553,7 @@ export default function SignDocumentPage() {
             </div>
           ) : (
             <div className="relative">
-              {/* Pager always visible (disabled as needed) */}
+              {/* Pager always visible */}
               <div className="flex items-center gap-3 my-3">
                 <button
                   onClick={() => setPageNumber((p) => Math.max(1, p - 1))}
@@ -588,11 +574,10 @@ export default function SignDocumentPage() {
                 </button>
               </div>
 
-              {/* PDF viewer */}
+              {/* PDF viewer + overlays */}
               <div className="relative inline-block">
                 {renderPDF()}
 
-                {/* Overlays for the current page only */}
                 {signatureElements
                   .filter((el) => {
                     const p = Number(el.page ?? el.pageNumber);
@@ -698,12 +683,7 @@ export default function SignDocumentPage() {
 
                 {activeElement.type === "checkbox" && (
                   <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={!!inputValue}
-                      onChange={(e) => setInputValue(e.target.checked)}
-                      className="w-5 h-5"
-                    />
+                    <input type="checkbox" checked={!!inputValue} onChange={(e) => setInputValue(e.target.checked)} className="w-5 h-5" />
                     <span className="text-sm">Checkbox</span>
                   </div>
                 )}
@@ -733,23 +713,6 @@ export default function SignDocumentPage() {
                         <div className="text-2xl font-bold">{inputValue}</div>
                       </div>
                     )}
-                  </div>
-                )}
-
-                {activeElement.type === "radio" && (
-                  <div className="space-y-2">
-                    {(activeElement.options?.split(",") || []).map((option, i) => (
-                      <label key={i} className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name={activeElement.id}
-                          checked={inputValue === option.trim()}
-                          onChange={() => setInputValue(option.trim())}
-                          className="w-4 h-4"
-                        />
-                        <span className="text-sm">{option.trim()}</span>
-                      </label>
-                    ))}
                   </div>
                 )}
 
@@ -794,3 +757,4 @@ export default function SignDocumentPage() {
     </div>
   );
 }
+
