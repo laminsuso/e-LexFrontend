@@ -1,7 +1,6 @@
 // E-Lex/e-LexFrontend/src/signdocument.js
 import React, { useEffect, useRef, useState } from "react";
-import { Document, Page } from "react-pdf";
-import { pdfjs } from "react-pdf";
+import { Document, Page, pdfjs } from "react-pdf";
 import DatePicker from "react-datepicker";
 import { useLocation, useParams } from "react-router-dom";
 import axios from "axios";
@@ -9,16 +8,14 @@ import { BASE_URL } from "./baseUrl";
 import { toast, ToastContainer } from "react-toastify";
 
 /* =========================
-   Constants & helpers
+   PDF.js worker fallbacks
    ========================= */
-
-// Multiple CDN fallbacks for PDF.js worker
 const PDF_WORKER_URLS = [
   `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`,
   `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`,
   `//cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`,
 ];
-const setPDFWorker = () => {
+(function setPDFWorker() {
   let i = 0;
   const tryWorker = () => {
     if (i < PDF_WORKER_URLS.length) {
@@ -26,11 +23,13 @@ const setPDFWorker = () => {
     }
   };
   tryWorker();
-  return tryWorker;
-};
-const tryNextWorker = setPDFWorker();
+})();
 
-// UI sizes
+/* =========================
+   Constants & helpers
+   ========================= */
+const PAGE_RENDER_WIDTH = 800;
+
 const FRONTEND_SIGNATURE_WIDTH = 200;
 const FRONTEND_SIGNATURE_HEIGHT = 80;
 const FRONTEND_TEXT_WIDTH = 200;
@@ -38,8 +37,8 @@ const FRONTEND_TEXT_HEIGHT = 40;
 const FRONTEND_DATE_WIDTH = 120;
 const FRONTEND_DATE_HEIGHT = 45;
 
-// Blue ink for draw + typed signatures
 const SIGNATURE_BLUE = "rgb(37, 99, 235)";
+
 const ensureBluePen = (ctx) => {
   if (!ctx) return;
   ctx.strokeStyle = SIGNATURE_BLUE;
@@ -48,13 +47,11 @@ const ensureBluePen = (ctx) => {
   ctx.filter = "none";
 };
 
-// number helper
 const toNumber = (v, def = null) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : def;
 };
 
-// normalize elements coming from server (make page/pageNumber consistently numeric or null)
 const normalizeServerElements = (arr) =>
   (arr || []).map((el) => {
     const page = toNumber(el.page ?? el.pageNumber, null);
@@ -68,7 +65,6 @@ const normalizeServerElements = (arr) =>
     };
   });
 
-// fix relative or protocol-less URLs
 const validateAndFixPDFUrl = (url) => {
   if (!url) return null;
   if (url.startsWith("/")) return `${BASE_URL}${url}`;
@@ -76,242 +72,15 @@ const validateAndFixPDFUrl = (url) => {
   return url;
 };
 
-/* =========================
-   Component
-   ========================= */
-export default function SignDocumentPage() {
-  const { documentId } = useParams();
-  const location = useLocation();
-
-  // Data state
-  const [documentData, setDocumentData] = useState(null);
-  const [currentProfile, setCurrentProfile] = useState(null);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [preference, setPreference] = useState({
-    user: "",
-    allowed_signature_types: "",
-    notify_on_signatures: false,
-    timezone: "",
-    date_format: "",
-    send_in_order: "",
-  });
-
-  // PDF state
-  const [file, setFile] = useState(null);
-  const [pdfLoading, setPdfLoading] = useState(false);
-  const [pdfLoadError, setPdfLoadError] = useState(null);
-  const [numPages, setNumPages] = useState(1);
-  const [pageNumber, setPageNumber] = useState(1);
-  const [forceImage, setForceImage] = useState(false); // fallback to image only if PDF truly fails
-
-  // Elements state
-  const [signatureElements, setSignatureElements] = useState([]);
-
-  // Editor modal state
-  const [activeElement, setActiveElement] = useState(null);
-  const [signatureType, setSignatureType] = useState(undefined); // draw | image | typed
-  const [inputValue, setInputValue] = useState("");
-  const [selectedDate, setSelectedDate] = useState(new Date());
-
-  // Draw (native canvas)
-  const canvasRef = useRef(null);
-  const ctxRef = useRef(null);
-  const ratioRef = useRef(1);
-  const [isDrawing, setIsDrawing] = useState(false);
-
-  // Saving overlay
-  const [loading, setLoading] = useState(false);
-
-  /* ---------- Load user & document ---------- */
-  useEffect(() => {
-    async function load() {
-      try {
-        const params = new URLSearchParams(location.search);
-        const email = params.get("email");
-        let token = localStorage.getItem("token");
-
-        if (!token) {
-          const { data } = await axios.post(`${BASE_URL}/registerAndLogin`, { email });
-          token = data.token;
-          localStorage.setItem("token", token);
-          setCurrentUser(data.user);
-          setPreference(data.preference);
-          setCurrentProfile(data.profile);
-        } else {
-          const me = await axios.get(`${BASE_URL}/getUser`, {
-            headers: { authorization: `Bearer ${token}` },
-          });
-          setCurrentUser(me.data.user);
-          setPreference(me.data.preference);
-          setCurrentProfile(me.data.profile);
-        }
-
-        const resp = await axios.get(`${BASE_URL}/getSpecificDoc/${documentId}`);
-        const doc = resp.data.doc;
-        setDocumentData(doc);
-        setFile(doc.file);
-        setSignatureElements(normalizeServerElements(doc.elements));
-      } catch (error) {
-        console.error("Document loading error:", error);
-        toast.error("Failed to load document", { containerId: "signaturesign" });
-      }
-    }
-    load();
-  }, [documentId, location.search]);
-
-  /* ---------- Draw tab setup (Hi-DPI) ---------- */
-  useEffect(() => {
-    if (!(canvasRef.current && activeElement?.type === "signature" && signatureType === "draw"))
-      return;
-
-    // Setup a crisp, scaled canvas
-    const canvas = canvasRef.current;
-    const ratio = Math.max(window.devicePixelRatio || 1, 1);
-    ratioRef.current = ratio;
-
-    canvas.style.width = `${FRONTEND_SIGNATURE_WIDTH}px`;
-    canvas.style.height = `${FRONTEND_SIGNATURE_HEIGHT}px`;
-    canvas.width = Math.floor(FRONTEND_SIGNATURE_WIDTH * ratio);
-    canvas.height = Math.floor(FRONTEND_SIGNATURE_HEIGHT * ratio);
-
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    ctx.scale(ratio, ratio);
-    ctx.lineWidth = 2;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ensureBluePen(ctx);
-    ctxRef.current = ctx;
-
-    // If user already has a saved signature image, preload it onto the canvas
-    if (currentProfile?.signature) {
-      const img = new Image();
-      img.onload = () =>
-        ctx.drawImage(img, 0, 0, FRONTEND_SIGNATURE_WIDTH, FRONTEND_SIGNATURE_HEIGHT);
-      img.src = currentProfile.signature;
-    }
-  }, [activeElement, signatureType, currentProfile]);
-
-  /* ---------- PDF events ---------- */
-  const onDocumentLoadSuccess = ({ numPages }) => {
-    setNumPages(numPages || 1);
-    // Always reset to first page (also makes Prev/Next appear deterministically)
-    setPageNumber(1);
-    setPdfLoading(false);
-    setPdfLoadError(null);
-    setForceImage(false);
-  };
-
-  const onDocumentLoadError = (err) => {
-    console.error("PDF loading error:", err);
-    setPdfLoading(false);
-    // Try another worker if the error looks worker-related
-    if (err?.name === "MissingPDFException" || err?.message?.includes("worker")) {
-      tryNextWorker();
-      setTimeout(() => setFile((prev) => prev), 50);
-    } else {
-      // Last resort: allow image fallback
-      setPdfLoadError(err?.message || "Failed to load PDF");
-      setForceImage(true);
-    }
-  };
-
-  const onDocumentLoadProgress = ({ loaded, total }) => {
-    if (!total) return;
-    const pct = Math.round((loaded / total) * 100);
-    if (pct === 100) {
-      // silent success
-    }
-  };
-
-  /* ---------- Keyboard page navigation ---------- */
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === "ArrowRight") setPageNumber((p) => Math.min(numPages, p + 1));
-      if (e.key === "ArrowLeft") setPageNumber((p) => Math.max(1, p - 1));
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [numPages]);
-
-  /* ---------- Drawing handlers ---------- */
-  const getEventCoordinates = (e) => {
-    const rect = canvasRef.current.getBoundingClientRect();
-    if (e.touches && e.touches[0]) {
-      return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
-    }
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  };
-  const startDrawing = (e) => {
-    if (!activeElement || !ctxRef.current) return;
-    e.preventDefault();
-    const { x, y } = getEventCoordinates(e);
-    const ctx = ctxRef.current;
-    ensureBluePen(ctx);
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    setIsDrawing(true);
-  };
-  const draw = (e) => {
-    if (!isDrawing || !ctxRef.current) return;
-    e.preventDefault();
-    const { x, y } = getEventCoordinates(e);
-    const ctx = ctxRef.current;
-    ensureBluePen(ctx);
-    ctx.lineTo(x, y);
-    ctx.stroke();
-  };
-  const stopDrawing = (e) => {
-    if (e) e.preventDefault();
-    ctxRef.current?.closePath();
-    setIsDrawing(false);
-  };
-
-  /* ---------- Element click ---------- */
-  const handleElementClick = (element) => {
-    if (element?.recipientEmail !== currentUser?.email) {
-      toast.error(
-        `Your current email is ${currentUser?.email} it is for ${element?.recipientEmail}`,
-        { containerId: "signaturesign" }
-      );
-      return;
-    }
-    setActiveElement(element);
-    setSignatureType(undefined);
-
-    switch (element.type) {
-      case "checkbox":
-        setInputValue(element.value || false);
-        break;
-      case "image":
-        setInputValue(element.value || "");
-        break;
-      case "initials":
-        setInputValue(element.value || currentProfile?.initials || "");
-        break;
-      case "radio":
-        setInputValue(element.value || "");
-        break;
-      case "date":
-        setSelectedDate(new Date(element.value || Date.now()));
-        break;
-      default:
-        setInputValue(element.value || "");
-    }
-  };
-
-  /* ---------- Typed signature renderer (blue cursive) ---------- */
-  const SIGNATURE_BLUE = "rgb(37, 99, 235)";
-
+/* Blue, cursive typed signature → PNG data URL */
 const convertTextToSignature = (text) => {
+  const W = FRONTEND_SIGNATURE_WIDTH;   // 200
+  const H = FRONTEND_SIGNATURE_HEIGHT;  // 80
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
-
-  const W = 200;  // FRONTEND_SIGNATURE_WIDTH
-  const H = 80;   // FRONTEND_SIGNATURE_HEIGHT
   canvas.width = W;
   canvas.height = H;
 
-  // baseline setup
   ctx.textBaseline = "middle";
   ctx.textAlign = "center";
   ctx.fillStyle = SIGNATURE_BLUE;
@@ -330,19 +99,256 @@ const convertTextToSignature = (text) => {
   return canvas.toDataURL("image/png");
 };
 
+/* =========================
+   Component
+   ========================= */
+export default function SignDocumentPage() {
+  const { documentId } = useParams();
+  const location = useLocation();
 
-  /* ---------- Save element value ---------- */
+  // user/profile/doc
+  const [currentUser, setCurrentUser] = useState(null);
+  const [currentProfile, setCurrentProfile] = useState(null);
+  const [file, setFile] = useState(null);
+  const [signatureElements, setSignatureElements] = useState([]);
+
+  // viewer state
+  const [pdfData, setPdfData] = useState(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfLoadError, setPdfLoadError] = useState(null);
+  const [forceImage, setForceImage] = useState(false);
+  const [numPages, setNumPages] = useState(1);
+  const [pageNumber, setPageNumber] = useState(1);
+
+  // element editor
+  const [activeElement, setActiveElement] = useState(null);
+  const [signatureType, setSignatureType] = useState(undefined); // draw | image | typed
+  const [inputValue, setInputValue] = useState("");
+  const [selectedDate, setSelectedDate] = useState(new Date());
+
+  // drawing canvas
+  const canvasRef = useRef(null);
+  const ctxRef = useRef(null);
+  const ratioRef = useRef(1);
+  const [isDrawing, setIsDrawing] = useState(false);
+
+  // saving overlay
+  const [saving, setSaving] = useState(false);
+
+  /* ---------- Load user + doc ---------- */
+  useEffect(() => {
+    (async () => {
+      try {
+        const params = new URLSearchParams(location.search);
+        const email = params.get("email");
+        let token = localStorage.getItem("token");
+
+        if (!token) {
+          const { data } = await axios.post(`${BASE_URL}/registerAndLogin`, { email });
+          token = data.token;
+          localStorage.setItem("token", token);
+          setCurrentUser(data.user);
+          setCurrentProfile(data.profile);
+        } else {
+          const me = await axios.get(`${BASE_URL}/getUser`, {
+            headers: { authorization: `Bearer ${token}` },
+          });
+          setCurrentUser(me.data.user);
+          setCurrentProfile(me.data.profile);
+        }
+
+        const resp = await axios.get(`${BASE_URL}/getSpecificDoc/${documentId}`);
+        const doc = resp.data.doc;
+        setFile(doc.file);
+        setSignatureElements(normalizeServerElements(doc.elements));
+      } catch (e) {
+        console.error(e);
+        toast.error("Failed to load document", { containerId: "signaturesign" });
+      }
+    })();
+  }, [documentId, location.search]);
+
+  /* ---------- Prefetch PDF bytes (robust viewer) ---------- */
+  useEffect(() => {
+    if (!file) return;
+    const url = validateAndFixPDFUrl(file);
+    setPdfLoading(true);
+    setPdfLoadError(null);
+    setPdfData(null);
+
+    axios
+      .get(url, { responseType: "arraybuffer" })
+      .then(({ data }) => {
+        setPdfData(new Uint8Array(data));
+        setPdfLoading(false);
+        setForceImage(false);
+      })
+      .catch((err) => {
+        console.error("PDF prefetch failed:", err);
+        setPdfLoading(false);
+        setPdfLoadError(err?.message || "Failed to load PDF");
+        setForceImage(true); // last-resort <img> fallback
+      });
+  }, [file]);
+
+  /* ---------- Drawing setup (Hi-DPI canvas) ---------- */
+  useEffect(() => {
+    if (!(canvasRef.current && activeElement?.type === "signature" && signatureType === "draw"))
+      return;
+
+    const canvas = canvasRef.current;
+    const ratio = Math.max(window.devicePixelRatio || 1, 1);
+    ratioRef.current = ratio;
+
+    canvas.style.width = `${FRONTEND_SIGNATURE_WIDTH}px`;
+    canvas.style.height = `${FRONTEND_SIGNATURE_HEIGHT}px`;
+    canvas.width = Math.floor(FRONTEND_SIGNATURE_WIDTH * ratio);
+    canvas.height = Math.floor(FRONTEND_SIGNATURE_HEIGHT * ratio);
+
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.scale(ratio, ratio);
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ensureBluePen(ctx);
+    ctxRef.current = ctx;
+
+    if (currentProfile?.signature) {
+      const img = new Image();
+      img.onload = () =>
+        ctx.drawImage(img, 0, 0, FRONTEND_SIGNATURE_WIDTH, FRONTEND_SIGNATURE_HEIGHT);
+      img.src = currentProfile.signature;
+    }
+  }, [activeElement, signatureType, currentProfile]);
+
+  /* ---------- PDF events ---------- */
+  const onDocumentLoadSuccess = ({ numPages }) => {
+    setNumPages(numPages || 1);
+    setPageNumber(1);
+  };
+  const onDocumentLoadError = (err) => {
+    console.error("react-pdf error:", err);
+    setPdfLoadError(err?.message || "Failed to load PDF");
+    setForceImage(true);
+  };
+
+  /* ---------- Keyboard pager ---------- */
+  useEffect(() => {
+    const onKey = (e) => {
+      if (numPages <= 1) return;
+      if (e.key === "ArrowRight") setPageNumber((p) => Math.min(numPages, p + 1));
+      if (e.key === "ArrowLeft") setPageNumber((p) => Math.max(1, p - 1));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [numPages]);
+
+  /* ---------- Drawing handlers ---------- */
+  const getEventCoordinates = (e) => {
+    const rect = canvasRef.current.getBoundingClientRect();
+    if (e.touches && e.touches[0]) {
+      return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
+    }
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  };
+
+  const startDrawing = (e) => {
+    if (!activeElement || !ctxRef.current) return;
+    e.preventDefault();
+    const { x, y } = getEventCoordinates(e);
+    const ctx = ctxRef.current;
+    ensureBluePen(ctx);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    setIsDrawing(true);
+  };
+
+  const draw = (e) => {
+    if (!isDrawing || !ctxRef.current) return;
+    e.preventDefault();
+    const { x, y } = getEventCoordinates(e);
+    const ctx = ctxRef.current;
+    ensureBluePen(ctx);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+
+  const stopDrawing = (e) => {
+    if (e) e.preventDefault();
+    ctxRef.current?.closePath();
+    setIsDrawing(false);
+  };
+
+  /* ---------- Element click / edit ---------- */
+  const [inputValue, setInputValue] = useState("");
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [signatureType, setSignatureType] = useState(undefined); // draw | image | typed
+
+  const handleElementClick = (element) => {
+    if (element?.recipientEmail && element.recipientEmail !== currentUser?.email) {
+      toast.error(
+        `This field is for ${element.recipientEmail}. You are ${currentUser?.email}.`,
+        { containerId: "signaturesign" }
+      );
+      return;
+    }
+    setActiveElement(element);
+    setSignatureType(undefined);
+    switch (element.type) {
+      case "checkbox":
+      case "radio":
+      case "image":
+        setInputValue(element.value || "");
+        break;
+      case "initials":
+        setInputValue(element.value || currentProfile?.initials || "");
+        break;
+      case "date":
+        setSelectedDate(new Date(element.value || Date.now()));
+        break;
+      default:
+        setInputValue(element.value || "");
+    }
+  };
+
+  const handleImageUpload = (e) => {
+    if (!activeElement || !e.target.files?.[0]) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setSignatureElements((prev) =>
+        prev.map((el) => (el.id === activeElement.id ? { ...el, value: ev.target.result } : el))
+      );
+      setActiveElement(null);
+    };
+    reader.readAsDataURL(e.target.files[0]);
+  };
+
+  const handleClearCanvas = () => {
+    const ctx = ctxRef.current;
+    const canvas = canvasRef.current;
+    if (!ctx || !canvas) return;
+    ctx.clearRect(0, 0, FRONTEND_SIGNATURE_WIDTH, FRONTEND_SIGNATURE_HEIGHT);
+    ensureBluePen(ctx);
+    if (currentProfile?.signature) {
+      const img = new Image();
+      img.onload = () =>
+        ctx.drawImage(img, 0, 0, FRONTEND_SIGNATURE_WIDTH, FRONTEND_SIGNATURE_HEIGHT);
+      img.src = currentProfile.signature;
+    }
+  };
+
   const handleSave = () => {
     if (!activeElement) return;
     let value;
+
     switch (activeElement.type) {
       case "signature":
         if (signatureType === "draw") {
-          value = canvasRef.current?.toDataURL("image/png") || null;
+          value = canvasRef.current?.toDataURL("image/png") || null;   // draw → blue png
         } else if (signatureType === "image") {
-          value = inputValue || currentProfile?.signature || null;
+          value = inputValue || currentProfile?.signature || null;     // uploaded image
         } else {
-          value = inputValue ? convertTextToSignature(inputValue) : null;
+          value = inputValue ? convertTextToSignature(inputValue) : null; // typed → blue png
         }
         break;
       case "checkbox":
@@ -359,6 +365,7 @@ const convertTextToSignature = (text) => {
       default:
         value = inputValue;
     }
+
     setSignatureElements((prev) =>
       prev.map((el) => (el.id === activeElement.id ? { ...el, value } : el))
     );
@@ -366,39 +373,11 @@ const convertTextToSignature = (text) => {
     setInputValue("");
   };
 
-  /* ---------- Image upload ---------- */
-  const handleImageUpload = (e) => {
-    if (!activeElement || !e.target.files?.[0]) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setSignatureElements((prev) =>
-        prev.map((el) => (el.id === activeElement.id ? { ...el, value: ev.target.result } : el))
-      );
-      setActiveElement(null);
-    };
-    reader.readAsDataURL(e.target.files[0]);
-  };
-
-  /* ---------- Clear signature canvas ---------- */
-  const handleClearCanvas = () => {
-    const ctx = ctxRef.current;
-    const canvas = canvasRef.current;
-    if (!ctx || !canvas) return;
-    ctx.clearRect(0, 0, FRONTEND_SIGNATURE_WIDTH, FRONTEND_SIGNATURE_HEIGHT);
-    ensureBluePen(ctx);
-    if (currentProfile?.signature) {
-      const img = new Image();
-      img.onload = () =>
-        ctx.drawImage(img, 0, 0, FRONTEND_SIGNATURE_WIDTH, FRONTEND_SIGNATURE_HEIGHT);
-      img.src = currentProfile.signature;
-    }
-  };
-
-  /* ---------- Persist signed document ---------- */
+  /* ---------- Persist signed PDF ---------- */
   const handleSaveDocument = async () => {
     try {
       const token = localStorage.getItem("token");
-      setLoading(true);
+      setSaving(true);
 
       const embedResponse = await axios.post(
         `${BASE_URL}/embedElementsInPDF`,
@@ -409,11 +388,11 @@ const convertTextToSignature = (text) => {
       const blob = new Blob([embedResponse.data], { type: "application/pdf" });
       const f = new File([blob], `signedDocument-${documentId}.pdf`, { type: "application/pdf" });
 
-      const dataForm = new FormData();
-      dataForm.append("document", f);
-      dataForm.append("documentId", documentId);
+      const form = new FormData();
+      form.append("document", f);
+      form.append("documentId", documentId);
 
-      await axios.patch(`${BASE_URL}/editDocument/${documentId}`, dataForm, {
+      await axios.patch(`${BASE_URL}/editDocument/${documentId}`, form, {
         headers: { authorization: `Bearer ${token}` },
       });
 
@@ -430,11 +409,10 @@ const convertTextToSignature = (text) => {
         containerId: "signaturesign",
       });
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
-  /* ---------- Decline signing ---------- */
   const declineSign = async () => {
     try {
       const token = localStorage.getItem("token");
@@ -452,9 +430,8 @@ const convertTextToSignature = (text) => {
     }
   };
 
-  /* ---------- Field preview (render only on its page) ---------- */
+  /* ---------- Field preview (render only on current page) ---------- */
   const renderFieldPreview = (element) => {
-    // If backend missed page info, hide it (prevents "falling back" to page 1)
     const p = Number(element.page ?? element.pageNumber);
     if (!Number.isFinite(p) || p !== pageNumber) return null;
 
@@ -497,7 +474,7 @@ const convertTextToSignature = (text) => {
       >
         <div className="flex-1">
           {element.value ? (
-            element.type === "signature" || element.type === "image" || element.type === "stamp" ? (
+            ["signature", "image", "stamp"].includes(element.type) ? (
               <img src={element.value} alt={element.type} className="w-full h-full object-contain" />
             ) : element.type === "checkbox" ? (
               <div className="flex items-center gap-2">
@@ -523,65 +500,35 @@ const convertTextToSignature = (text) => {
   };
 
   /* ---------- PDF viewer ---------- */
-  const renderPDFDocument = () => {
-    const validatedUrl = validateAndFixPDFUrl(file);
-
-    if (forceImage) {
-      // last-resort fallback—shows only first page if a multi-page PDF was mis-uploaded as image
+  const renderPDF = () => {
+    if (pdfLoadError) {
       return (
-        <img
-          src={validatedUrl}
-          alt="Document"
-          className="max-w-full h-auto"
-          onError={(e) => (e.currentTarget.style.display = "none")}
-        />
+        <div className="flex items-center justify-center h-64 text-red-600">
+          Failed to load document
+        </div>
       );
     }
+    if (pdfLoading) {
+      return (
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+          <p>Loading PDF...</p>
+        </div>
+      );
+    }
+    if (forceImage) {
+      // last-resort fallback — single page <img>
+      return <img src={validateAndFixPDFUrl(file)} alt="Document" className="max-w-full h-auto" />;
+    }
+    if (!pdfData) return null;
 
     return (
-      <Document
-        file={validatedUrl}
-        onLoadSuccess={onDocumentLoadSuccess}
-        onLoadError={onDocumentLoadError}
-        onLoadProgress={onDocumentLoadProgress}
-        loading={
-          <div className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-              <p>Loading PDF...</p>
-            </div>
-          </div>
-        }
-        error={
-          <div className="flex flex-col items-center justify-center h-64 bg-red-50 border-2 border-red-200 rounded-lg">
-            <div className="text-red-600 text-center p-4">
-              <h3 className="font-semibold mb-2">PDF Loading Failed</h3>
-              <p className="text-sm mb-4">Unable to load the PDF document</p>
-              <button
-                onClick={() => window.location.reload()}
-                className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
-              >
-                Refresh Page
-              </button>
-            </div>
-          </div>
-        }
-      >
+      <Document file={pdfData} onLoadSuccess={onDocumentLoadSuccess} onLoadError={onDocumentLoadError}>
         <Page
           pageNumber={pageNumber}
-          width={800}
+          width={PAGE_RENDER_WIDTH}
           renderAnnotationLayer={false}
           renderTextLayer={false}
-          loading={
-            <div className="flex items-center justify-center h-96">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-            </div>
-          }
-          error={
-            <div className="flex items-center justify-center h-96 bg-gray-100">
-              <p className="text-gray-600">Failed to load page</p>
-            </div>
-          }
         />
       </Document>
     );
@@ -620,7 +567,7 @@ const convertTextToSignature = (text) => {
             </div>
           ) : (
             <div className="relative">
-              {/* Always-visible page controls (disabled when not applicable) */}
+              {/* Pager always visible (disabled as needed) */}
               <div className="flex items-center gap-3 my-3">
                 <button
                   onClick={() => setPageNumber((p) => Math.max(1, p - 1))}
@@ -643,7 +590,7 @@ const convertTextToSignature = (text) => {
 
               {/* PDF viewer */}
               <div className="relative inline-block">
-                {renderPDFDocument()}
+                {renderPDF()}
 
                 {/* Overlays for the current page only */}
                 {signatureElements
@@ -692,7 +639,7 @@ const convertTextToSignature = (text) => {
                           width={FRONTEND_SIGNATURE_WIDTH}
                           height={FRONTEND_SIGNATURE_HEIGHT}
                           className="border mb-2"
-                          style={{ touchAction: "none", filter: "none" }}
+                          style={{ touchAction: "none" }}
                           onMouseDown={startDrawing}
                           onMouseMove={draw}
                           onMouseUp={stopDrawing}
@@ -701,10 +648,7 @@ const convertTextToSignature = (text) => {
                           onTouchMove={draw}
                           onTouchEnd={stopDrawing}
                         />
-                        <button
-                          onClick={handleClearCanvas}
-                          className="bg-gray-300 text-gray-700 px-3 py-1 rounded text-sm"
-                        >
+                        <button onClick={handleClearCanvas} className="bg-gray-300 text-gray-700 px-3 py-1 rounded text-sm">
                           Clear
                         </button>
                       </div>
@@ -730,32 +674,25 @@ const convertTextToSignature = (text) => {
                     )}
 
                     {signatureType === "typed" && (
-  <>
-    <input
-      type="text"
-      value={inputValue}
-      onChange={(e) => setInputValue(e.target.value)}
-      className="w-full p-2 border rounded mb-4"
-      placeholder="Type your signature"
-    />
-
-    {/* Force an image preview from the canvas (blue). */}
-    <div className="text-center border p-2">
-      <img
-        src={convertTextToSignature(inputValue || " ")}
-        alt="Signature Preview"
-        width={FRONTEND_SIGNATURE_WIDTH}
-        height={FRONTEND_SIGNATURE_HEIGHT}
-        style={{
-          display: "inline-block",
-          filter: "none",
-          mixBlendMode: "normal",
-        }}
-      />
-    </div>
-  </>
-)}
-
+                      <>
+                        <input
+                          type="text"
+                          value={inputValue}
+                          onChange={(e) => setInputValue(e.target.value)}
+                          className="w-full p-2 border rounded mb-4"
+                          placeholder="Type your signature"
+                        />
+                        <div className="text-center border p-2">
+                          <img
+                            src={convertTextToSignature(inputValue || " ")}
+                            alt="Signature Preview"
+                            width={FRONTEND_SIGNATURE_WIDTH}
+                            height={FRONTEND_SIGNATURE_HEIGHT}
+                            style={{ filter: "none", mixBlendMode: "normal" }}
+                          />
+                        </div>
+                      </>
+                    )}
                   </>
                 )}
 
@@ -777,9 +714,7 @@ const convertTextToSignature = (text) => {
                       Click to upload image
                       <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
                     </label>
-                    {inputValue && (
-                      <img src={inputValue} alt="Preview" className="mx-auto max-h-32 object-contain" />
-                    )}
+                    {inputValue && <img src={inputValue} alt="Preview" className="mx-auto max-h-32 object-contain" />}
                   </div>
                 )}
 
@@ -847,7 +782,7 @@ const convertTextToSignature = (text) => {
       </div>
 
       {/* Saving overlay */}
-      {loading && (
+      {saving && (
         <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50">
           <div className="bg-white p-8 rounded-xl shadow-xl w-full max-w-2xl mx-4 text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
