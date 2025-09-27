@@ -9,6 +9,13 @@ import { BASE_URL } from "./baseUrl";
 import { ToastContainer, toast } from "react-toastify";
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
+const SIGNATURE_BLUE = '#1a73e8';
+const MIN_WIDTH = 0.8;
+const MAX_WIDTH = 2.6;
+const SMOOTHING = 0.85;
+const VELOCITY_FILTER = 0.7;
+
+
 const SignYourselfPage = () => {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -116,9 +123,10 @@ const SignYourselfPage = () => {
     ) {
       const canvas = canvasRef.current;
       const ctx = canvas.getContext("2d");
-      ctx.lineWidth = 2;
+      ctx.lineWidth = MAX_WIDTH;
       ctx.lineCap = "round";
-      ctx.strokeStyle = "#000";
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = SIGNATURE_BLUE; // add the same constant at the top of this file
       setCanvasContext(ctx);
     }
   }, [selectedTool, signatureType]);
@@ -320,20 +328,6 @@ const SignYourselfPage = () => {
       clientY: event.clientY,
     };
   };
-
-  // const startDrawing = (e) => {
-  //   const rect = canvasRef.current.getBoundingClientRect();
-  //   canvasContext.beginPath();
-  //   canvasContext.moveTo(e.clientX - rect.left, e.clientY - rect.top);
-  //   setIsDrawing(true);
-  // };
-
-  // const draw = (e) => {
-  //   if (!isDrawing) return;
-  //   const rect = canvasRef.current.getBoundingClientRect();
-  //   canvasContext.lineTo(e.clientX - rect.left, e.clientY - rect.top);
-  //   canvasContext.stroke();
-  // };
   const startDrawing = (e) => {
     const { clientX, clientY } = getPosition(e);
     const rect = canvasRef.current.getBoundingClientRect();

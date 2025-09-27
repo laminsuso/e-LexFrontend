@@ -3,6 +3,12 @@ import { useRef, useState, useEffect } from 'react';
 import { ToastContainer, toast } from 'react-toastify';
 import { BASE_URL } from './baseUrl';
 
+const MIN_WIDTH = 0.8;
+const MAX_WIDTH = 2.6;
+const SMOOTHING = 0.85;
+const VELOCITY_FILTER = 0.7;
+
+
 const PenIcon = ({ color }) => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
     <path d="M15.2322 5.23223L18.7682 8.76823M3 21L8.32842 19.6716L19.3284 8.67157L15.3284 4.67157L4.32843 15.6716L3 21Z"
@@ -11,8 +17,8 @@ const PenIcon = ({ color }) => (
 );
 
 export default function Signatures() {
-  const [signatureColor, setSignatureColor] = useState('#000000');
-  const [initialsColor, setInitialsColor] = useState('#000000');
+  const [signatureColor, setSignatureColor] = useState('#1a73e8');
+  const [initialsColor, setInitialsColor] = useState('#1a73e8');
   const [loading,setLoading]=useState(true)
   const [isDrawing, setIsDrawing] = useState(false);
   const [lastPosition, setLastPosition] = useState({ x: 0, y: 0 });
@@ -87,7 +93,7 @@ export default function Signatures() {
     ctx.scale(dpr, dpr);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = MAX_WIDTH;
     ctx.strokeStyle = color;
   };
 
@@ -96,50 +102,77 @@ export default function Signatures() {
     if (initialsCanvasRef.current) setupCanvas(initialsCanvasRef.current, initialsColor);
   }, [signatureColor, initialsColor]);
 
-  const startDrawing = (e, canvas, color) => {
-    currentCanvasRef.current = canvas;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    
-    const x = ('touches' in e) ? 
-      (e.touches[0].clientX - rect.left) * scaleX : 
-      e.nativeEvent.offsetX * scaleX;
-      
-    const y = ('touches' in e) ? 
-      (e.touches[0].clientY - rect.top) * scaleY : 
-      e.nativeEvent.offsetY * scaleY;
+    const lastPointRef = useRef(null);
+    const lastTimeRef  = useRef(0);
+    const lineWidthRef = useRef(MAX_WIDTH);
 
-    setIsDrawing(true);
-    setLastPosition({ x, y });
-  };
+    const startDrawing = (e, canvas /*, color unused here */) => {
+      currentCanvasRef.current = canvas;
+      const rect = canvas.getBoundingClientRect();
 
-  const draw = (e) => {
-    if (!isDrawing || !currentCanvasRef.current) return;
-    
-    const canvas = currentCanvasRef.current;
-    const ctx = canvas.getContext('2d');
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
 
-    const x = ('touches' in e) ? 
-      (e.touches[0].clientX - rect.left) * scaleX : 
-      e.nativeEvent.offsetX * scaleX;
-      
-    const y = ('touches' in e) ? 
-      (e.touches[0].clientY - rect.top) * scaleY : 
-      e.nativeEvent.offsetY * scaleY;
+      const x = ('touches' in e)
+        ? (e.touches[0].clientX - rect.left) * scaleX
+        : e.nativeEvent.offsetX * scaleX;
 
-    if (ctx) {
+      const y = ('touches' in e)
+        ? (e.touches[0].clientY - rect.top) * scaleY
+        : e.nativeEvent.offsetY * scaleY;
+
+      lastPointRef.current = { x, y };
+      lastTimeRef.current = performance.now();
+      lineWidthRef.current = MAX_WIDTH;
+
+      setIsDrawing(true);
+    };
+
+    const draw = (e) => {
+      if (!isDrawing || !currentCanvasRef.current) return;
+
+      const canvas = currentCanvasRef.current;
+      const ctx = canvas.getContext('2d');
+      const rect = canvas.getBoundingClientRect();
+
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+
+      const x = ('touches' in e)
+        ? (e.touches[0].clientX - rect.left) * scaleX
+        : e.nativeEvent.offsetX * scaleX;
+
+      const y = ('touches' in e)
+        ? (e.touches[0].clientY - rect.top) * scaleY
+        : e.nativeEvent.offsetY * scaleY;
+
+      const now = performance.now();
+      const dt = Math.max(now - lastTimeRef.current, 1);
+
+      const lp = lastPointRef.current;
+      const dx = x - lp.x;
+      const dy = y - lp.y;
+      const dist = Math.hypot(dx, dy);
+
+      const velocity = dist / dt;
+      const targetWidth = Math.max(MAX_WIDTH / (velocity * VELOCITY_FILTER + 1), MIN_WIDTH);
+      const newWidth = lineWidthRef.current * SMOOTHING + targetWidth * (1 - SMOOTHING);
+
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = newWidth;
+      // keep whichever color you bound in setupCanvas (signatureColor/initialsColor)
+
       ctx.beginPath();
-      ctx.moveTo(lastPosition.x / scaleX, lastPosition.y / scaleY);
+      ctx.moveTo(lp.x / scaleX, lp.y / scaleY);
       ctx.lineTo(x / scaleX, y / scaleY);
       ctx.stroke();
-    }
-    
-    setLastPosition({ x, y });
-  };
+
+      lineWidthRef.current = newWidth;
+      lastPointRef.current = { x, y };
+      lastTimeRef.current = now;
+    };
+
 
   const clearCanvas = (canvasRef) => {
     const canvas = canvasRef.current;

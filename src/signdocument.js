@@ -38,6 +38,13 @@ const FRONTEND_TEXT_HEIGHT = 40;
 const FRONTEND_DATE_WIDTH = 120;
 const FRONTEND_DATE_HEIGHT = 45;
 
+// Signature theme
+const SIGNATURE_BLUE = '#1a73e8';     // e-signature blue
+const MIN_WIDTH = 0.8;                // thinnest stroke
+const MAX_WIDTH = 2.6;                // thickest stroke
+const SMOOTHING = 0.85;               // line width smoothing (0..1)
+const VELOCITY_FILTER = 0.7;          // higher => less thickness change
+
 const SignDocumentPage = () => {
   const { documentId } = useParams();
  
@@ -141,9 +148,10 @@ const SignDocumentPage = () => {
       signatureType === "draw"
     ) {
       const ctx = canvasRef.current.getContext("2d");
-      ctx.lineWidth = 2;
+      ctx.lineWidth = MAX_WIDTH;
       ctx.lineCap = "round";
-      ctx.strokeStyle = "#000";
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = SIGNATURE_BLUE;
       setCanvasContext(ctx);
       if (currentProfile?.signature) {
         const img = new Image();
@@ -229,34 +237,67 @@ const SignDocumentPage = () => {
     return url;
   };
 
-  const startDrawing = (e) => {
-    if (!activeElement || !canvasRef.current) return;
-    
-    // Prevent scrolling on mobile when drawing
-    e.preventDefault();
-    
-    const coords = getEventCoordinates(e);
-    canvasContext.beginPath();
-    canvasContext.moveTo(coords.x, coords.y);
-    setIsDrawing(true);
-  };
+      // Helpers to make the ink look like a real signature
+    const lastPointRef = useRef(null);
+    const lastTimeRef  = useRef(0);
+    const lineWidthRef = useRef(MAX_WIDTH);
 
-  const draw = (e) => {
-    if (!isDrawing || !canvasRef.current) return;
-    
-    // Prevent scrolling on mobile when drawing
-    e.preventDefault();
-    
-    const coords = getEventCoordinates(e);
-    canvasContext.lineTo(coords.x, coords.y);
-    canvasContext.stroke();
-  };
+    const startDrawing = (e) => {
+      if (!activeElement || !canvasRef.current || !canvasContext) return;
+      e.preventDefault();
 
-  const stopDrawing = (e) => {
-    if (e) e.preventDefault();
-    canvasContext?.closePath();
-    setIsDrawing(false);
-  };
+      const p = getEventCoordinates(e);
+      lastPointRef.current = p;
+      lastTimeRef.current = performance.now();
+      lineWidthRef.current = MAX_WIDTH;
+
+      canvasContext.beginPath();
+      canvasContext.moveTo(p.x, p.y);
+      setIsDrawing(true);
+    };
+
+    const draw = (e) => {
+      if (!isDrawing || !canvasContext) return;
+      e.preventDefault();
+
+      const p = getEventCoordinates(e);
+      const now = performance.now();
+      const dt = Math.max(now - lastTimeRef.current, 1); // avoid divide by 0
+
+      const lp = lastPointRef.current;
+      const dx = p.x - lp.x;
+      const dy = p.y - lp.y;
+      const dist = Math.hypot(dx, dy);
+
+      // Velocity in px/ms
+      const velocity = dist / dt;
+
+      // Map velocity to stroke width (slower => thicker)
+      const targetWidth = Math.max(MAX_WIDTH / (velocity * VELOCITY_FILTER + 1), MIN_WIDTH);
+      const newWidth = lineWidthRef.current * SMOOTHING + targetWidth * (1 - SMOOTHING);
+
+      canvasContext.strokeStyle = SIGNATURE_BLUE;
+      canvasContext.lineCap = 'round';
+      canvasContext.lineJoin = 'round';
+      canvasContext.lineWidth = newWidth;
+
+      canvasContext.beginPath();
+      canvasContext.moveTo(lp.x, lp.y);
+      canvasContext.lineTo(p.x, p.y);
+      canvasContext.stroke();
+
+      lineWidthRef.current = newWidth;
+      lastPointRef.current = p;
+      lastTimeRef.current = now;
+    };
+
+    const stopDrawing = () => {
+      if (!isDrawing) return;
+      canvasContext?.closePath();
+      setIsDrawing(false);
+      lastPointRef.current = null;
+    };
+
 
   const handleElementClick = (element) => {
     if (element?.recipientEmail !== currentUser?.email){
@@ -291,8 +332,8 @@ const SignDocumentPage = () => {
     const ctx = canvas.getContext("2d");
     canvas.width = FRONTEND_SIGNATURE_WIDTH;
     canvas.height = FRONTEND_SIGNATURE_HEIGHT;
-    ctx.font = "italic 34px Great Vibes";
-    ctx.fillStyle = "#000000";
+    ctx.font = "italic 42px 'Great Vibes', cursive";
+    ctx.fillStyle = SIGNATURE_BLUE;
     ctx.textBaseline = "middle";
     ctx.textAlign = "center";
     ctx.fillText(text, canvas.width / 2, canvas.height / 2);
