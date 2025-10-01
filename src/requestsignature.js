@@ -35,6 +35,28 @@ const FIELD_TYPES = {
   EMAIL: "email",
 };
 
+// Normalize all element coordinates to a virtual page that is 800px wide.
+// This matches what the backend expects when embedding into the PDF.
+const normalizeForPdf = (elements) => {
+  // Prefer the actual rendered PDF page width if available
+  const pageEl =
+    containerRef.current?.querySelector('.react-pdf__Page') ||
+    containerRef.current;
+
+  const containerWidth = pageEl?.clientWidth || 800; // fallback
+  const s = 800 / containerWidth;
+
+  return elements.map((el) => ({
+    ...el,
+    x: Math.round(el.x * s),
+    y: Math.round(el.y * s),
+    // If you ever store width/height on elements, scale those too:
+    width: el.width ? Math.round(el.width * s) : el.width,
+    height: el.height ? Math.round(el.height * s) : el.height,
+  }));
+};
+
+
 const RequestSignaturesPage = () => {
   const [touchDraggedElement, setTouchDraggedElement] = useState(null);
   const [touchStartPos, setTouchStartPos] = useState({ x: 0, y: 0 });
@@ -235,7 +257,9 @@ const RequestSignaturesPage = () => {
       const form = new FormData();
       form.append("document", file);
       form.append("title", formData.title);
-      form.append("elements", JSON.stringify(signatureElements));
+      //form.append("elements", JSON.stringify(signatureElements));
+       const elementsToSave = normalizeForPdf(signatureElements);
+       form.append("elements", JSON.stringify(elementsToSave));
 
       if (shareId.length == 0) {
 
@@ -252,7 +276,8 @@ const RequestSignaturesPage = () => {
           {
             ...formData,
             documentId: saveResponse.data.doc._id,
-            elements: signatureElements,
+            //elements: signatureElements,
+            elements: elementsToSave,
 
           },
           headers
@@ -266,7 +291,8 @@ const RequestSignaturesPage = () => {
           {
             ...formData,
             documentId: shareId,
-            elements: signatureElements,
+            //elements: signatureElements,
+            elements: elementsToSave,
 
           },
           headers
@@ -311,7 +337,9 @@ const RequestSignaturesPage = () => {
         const form = new FormData();
         form.append("document", file);
         form.append("title", formData.title);
-        form.append("elements", JSON.stringify(signatureElements));
+        //form.append("elements", JSON.stringify(signatureElements));
+         const elementsToSave = normalizeForPdf(signatureElements);
+         form.append("elements", JSON.stringify(elementsToSave));
 
         let signers = signatureElements.map((val, i) => {
           return {
@@ -404,7 +432,9 @@ const RequestSignaturesPage = () => {
         const form = new FormData();
         form.append("document", file);
         form.append("title", formData.title);
-        form.append("elements", JSON.stringify(signatureElements));
+        //form.append("elements", JSON.stringify(signatureElements));
+         const elementsToSave = normalizeForPdf(signatureElements);
+         form.append("elements", JSON.stringify(elementsToSave));
 
         let signers = signatureElements.map((val, i) => {
           return {
