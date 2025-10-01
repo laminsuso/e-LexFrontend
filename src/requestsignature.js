@@ -4,12 +4,9 @@ import { v4 as uuidv4 } from "uuid";
 import axios from "axios";
 import { BASE_URL } from "./baseUrl";
 import { ToastContainer, toast } from "react-toastify";
-// If you don't already import the styles globally, uncomment the next line:
-// import "react-toastify/dist/ReactToastify.css";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
-/** Field types used throughout the UI */
 const FIELD_TYPES = {
   SIGNATURE: "signature",
   INITIALS: "initials",
@@ -23,43 +20,8 @@ const FIELD_TYPES = {
   EMAIL: "email",
 };
 
-/**
- * Normalize coordinates to the 800px virtual canvas the backend expects.
- * No refs needed: we read the first rendered PDF page width from the DOM,
- * falling back to viewport width (capped at 800) or 800px.
- */
-const normalizeForPdf = (elements) => {
-  let containerWidth = 800;
-
-  if (typeof document !== "undefined") {
-    const pageEl =
-      document.querySelector(".react-pdf__Page") ||
-      document.querySelector(".react-pdf__Page__canvas")?.parentElement;
-    if (pageEl?.clientWidth) {
-      containerWidth = pageEl.clientWidth;
-    }
-  }
-
-  if (typeof window !== "undefined") {
-    const viewportWidth = Math.max(Math.min(window.innerWidth - 32, 800), 320);
-    if (!containerWidth || containerWidth === 800) {
-      containerWidth = viewportWidth || 800;
-    }
-  }
-
-  const s = 800 / containerWidth;
-
-  return (elements || []).map((el) => ({
-    ...el,
-    x: Math.round(Number(el.x) * s),
-    y: Math.round(Number(el.y) * s),
-    ...(el.width != null ? { width: Math.round(Number(el.width) * s) } : {}),
-    ...(el.height != null ? { height: Math.round(Number(el.height) * s) } : {}),
-  }));
-};
-
 const RequestSignaturesPage = () => {
-  // Stepper + file + PDF state
+  // Step + file + PDF
   const [step, setStep] = useState(1);
   const [file, setFile] = useState(null);
   const [pageNumber, setPageNumber] = useState(1);
@@ -76,27 +38,77 @@ const RequestSignaturesPage = () => {
   const [contactBook, setContactBook] = useState([]);
   const [signatureElements, setSignatureElements] = useState([]);
 
-  // Drag/drop & touch
+  // Drag & touch for placed elements
   const [draggedElement, setDraggedElement] = useState(null);
   const [positionOffset, setPositionOffset] = useState({ x: 0, y: 0 });
-  const [touchDraggedElement, setTouchDraggedElement] = useState(null);
-  const [touchStartPos, setTouchStartPos] = useState({ x: 0, y: 0 });
 
-  // Sending
+  // Toolbox touch drag
+  const [touchDraggedElement, setTouchDraggedElement] = useState(null);
+
+  // Send flow
   const [showSendPopup, setShowSendPopup] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isSocial, setIsSocial] = useState(false);
   const [shareId, setShareId] = useState("");
 
   // Refs
+  // IMPORTANT: this ref is attached to the SAME element that is `position: relative`
+  // and directly contains the PDF page + absolutely positioned placeholders.
   const containerRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  // ---- Helpers ----
+  // ------------ Helpers ------------
+
+  // Normalizes ALL elements to the backend's 800px virtual canvas
+  // by computing per-element offsets to its PDF page & scaling by that page's rendered width.
+  const normalizeForPdf = (elements) => {
+    const container = containerRef.current;
+    if (!container || !elements?.length) return elements || [];
+
+    return elements.map((el) => {
+      // Find the DOM for THIS element's page
+      const selector = `.react-pdf__Page[data-page-number="${el.pageNumber}"]`;
+      const pageEl =
+        container.querySelector(selector) ||
+        document.querySelector(selector) ||
+        container.querySelector(".react-pdf__Page") ||
+        document.querySelector(".react-pdf__Page");
+
+      let pageWidth = 800;
+      let offsetX = 0;
+      let offsetY = 0;
+
+      if (pageEl) {
+        pageWidth = pageEl.clientWidth || pageWidth;
+        const pageRect = pageEl.getBoundingClientRect();
+        const contRect = container.getBoundingClientRect();
+        offsetX = pageRect.left - contRect.left;
+        offsetY = pageRect.top - contRect.top;
+      } else if (typeof window !== "undefined") {
+        // Fallback to viewport width rule (same as <Page width={...}>)
+        pageWidth = Math.min(window.innerWidth - 32, 800);
+      }
+
+      // Convert element's absolute coords (relative to container)
+      // into coords relative to the top-left of the PDF page.
+      const localX = (Number(el.x) || 0) - offsetX;
+      const localY = (Number(el.y) || 0) - offsetY;
+
+      const s = 800 / (pageWidth || 800);
+
+      return {
+        ...el,
+        x: Math.round(localX * s),
+        y: Math.round(localY * s),
+        ...(el.width != null ? { width: Math.round(Number(el.width) * s) } : {}),
+        ...(el.height != null ? { height: Math.round(Number(el.height) * s) } : {}),
+      };
+    });
+  };
 
   const handleFileChange = (e) => {
     const selected = e.target.files[0];
-    if (selected && /\.(pdf)$/i.test(selected.name)) {
+    if (selected && /\.pdf$/i.test(selected.name)) {
       setFile(selected);
       setPageNumber(1);
     } else {
@@ -130,30 +142,25 @@ const RequestSignaturesPage = () => {
     try {
       const token = localStorage.getItem("token");
       const headers = { headers: { authorization: `Bearer ${token}` } };
-      const response = await axios.get(`${BASE_URL}/fetchContactBooks`, headers);
-      setContactBook(response.data.contactBooks || []);
+      const res = await axios.get(`${BASE_URL}/fetchContactBooks`, headers);
+      setContactBook(res.data?.contactBooks || []);
     } catch {
       toast.error("Something went wrong, please try again", { containerId: "requestSignature" });
     }
   };
-
   useEffect(() => {
     fetchContactBooks();
   }, []);
 
-  // ---- Touch interactions for toolbox items ----
+  // ---------- Toolbox (touch) ----------
   const handleToolTouchStart = (type, email, options = {}) => (e) => {
     e.preventDefault();
-    const touch = e.touches[0];
     setTouchDraggedElement({ type, email, options });
-    setTouchStartPos({ x: touch.clientX, y: touch.clientY });
   };
-
   const handleToolTouchMove = (e) => {
     if (!touchDraggedElement) return;
-    e.preventDefault(); // prevent scroll
+    e.preventDefault();
   };
-
   const handleToolTouchEnd = (e) => {
     if (!touchDraggedElement) return;
     e.preventDefault();
@@ -163,16 +170,15 @@ const RequestSignaturesPage = () => {
     const x = touch.clientX - rect.left;
     const y = touch.clientY - rect.top;
 
+    // Drop must be inside the page container
     if (x >= 0 && x <= rect.width && y >= 0 && y <= rect.height) {
       const { type, email, options } = touchDraggedElement;
       createPlaceholder(type, email, x, y, options);
     }
-
     setTouchDraggedElement(null);
-    setTouchStartPos({ x: 0, y: 0 });
   };
 
-  // ---- Touch interactions for placed elements ----
+  // ---------- Placed elements: mouse/touch drag ----------
   const handleElementTouchStart = (e, id) => {
     e.preventDefault();
     const touch = e.touches[0];
@@ -184,7 +190,6 @@ const RequestSignaturesPage = () => {
     setPositionOffset({ x: x - el.x, y: y - el.y });
     setDraggedElement(id);
   };
-
   const handleElementTouchMove = (e) => {
     if (!draggedElement) return;
     e.preventDefault();
@@ -196,10 +201,29 @@ const RequestSignaturesPage = () => {
       prev.map((el) => (el.id === draggedElement ? { ...el, x, y } : el))
     );
   };
-
   const handleElementTouchEnd = () => setDraggedElement(null);
 
-  // ---- Recipients ----
+  const handleMouseDown = (e, id) => {
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const el = signatureElements.find((s) => s.id === id);
+    if (!el) return;
+    setPositionOffset({ x: x - el.x, y: y - el.y });
+    setDraggedElement(id);
+  };
+  const handleMouseMove = (e) => {
+    if (!draggedElement) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left - positionOffset.x;
+    const y = e.clientY - rect.top - positionOffset.y;
+    setSignatureElements((prev) =>
+      prev.map((el) => (el.id === draggedElement ? { ...el, x, y } : el))
+    );
+  };
+  const handleMouseUp = () => setDraggedElement(null);
+
+  // ---------- Recipients ----------
   const handleChangeSign = (recipient, value) => {
     setFormData((prev) => ({
       ...prev,
@@ -251,7 +275,6 @@ const RequestSignaturesPage = () => {
       toast.error("Please enter a valid phone number", { containerId: "requestSignature" });
       return;
     }
-
     setFormData((prev) => ({
       ...prev,
       recipients: [
@@ -278,14 +301,14 @@ const RequestSignaturesPage = () => {
     }));
   };
 
-  // ---- Elements ----
+  // ---------- Elements ----------
   const createPlaceholder = (type, email, x = 50, y = 50, options = {}) => {
     const newElement = {
       id: uuidv4(),
       type,
       x,
       y,
-      pageNumber, // current page
+      pageNumber, // current page number
       recipientEmail: email,
       placeholderText: getPlaceholderText(type, email, options),
       isPlaceholder: true,
@@ -315,30 +338,7 @@ const RequestSignaturesPage = () => {
     setSignatureElements((prev) => prev.filter((el) => el.id !== id));
   };
 
-  // Mouse drag for placed elements
-  const handleMouseDown = (e, id) => {
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const el = signatureElements.find((s) => s.id === id);
-    if (!el) return;
-    setPositionOffset({ x: x - el.x, y: y - el.y });
-    setDraggedElement(id);
-  };
-
-  const handleMouseMove = (e) => {
-    if (!draggedElement) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left - positionOffset.x;
-    const y = e.clientY - rect.top - positionOffset.y;
-    setSignatureElements((prev) =>
-      prev.map((el) => (el.id === draggedElement ? { ...el, x, y } : el))
-    );
-  };
-
-  const handleMouseUp = () => setDraggedElement(null);
-
-  // Toolbox drag
+  // ---------- Toolbox drag & drop ----------
   const handleToolDragStart =
     (type, email, options = {}) =>
     (e) => {
@@ -362,13 +362,13 @@ const RequestSignaturesPage = () => {
     }
   };
 
-  // ---- Send flow ----
+  // ---------- Send flow ----------
   const handleSendRequest = () => {
-    const mustSign = formData.recipients.filter((u) => u.willSign === true);
-    const allHaveField = mustSign.every((r) =>
+    const required = formData.recipients.filter((u) => u.willSign === true);
+    const ok = required.every((r) =>
       signatureElements.some((el) => el.recipientEmail === r.email)
     );
-    if (!allHaveField) {
+    if (!ok) {
       toast.error("At least one element should be created for each signer", {
         containerId: "requestSignature",
       });
@@ -394,24 +394,15 @@ const RequestSignaturesPage = () => {
 
       if (!shareId) {
         const saveResponse = await axios.post(`${BASE_URL}/saveDocument`, form, headers);
-
         await axios.post(
           `${BASE_URL}/sendSignRequest`,
-          {
-            ...formData,
-            documentId: saveResponse.data.doc._id,
-            elements: elementsToSave,
-          },
+          { ...formData, documentId: saveResponse.data.doc._id, elements: elementsToSave },
           headers
         );
       } else {
         await axios.post(
           `${BASE_URL}/sendSignRequest`,
-          {
-            ...formData,
-            documentId: shareId,
-            elements: elementsToSave,
-          },
+          { ...formData, documentId: shareId, elements: elementsToSave },
           headers
         );
       }
@@ -451,10 +442,8 @@ const RequestSignaturesPage = () => {
         let signers = signatureElements
           .map((val) => ({ email: val.recipientEmail }))
           .filter(
-            (value, index, self) =>
-              index === self.findIndex((t) => t.email === value.email)
+            (v, i, self) => i === self.findIndex((t) => t.email === v.email)
           );
-
         form.append("signers", JSON.stringify(signers));
 
         const saveResponse = await axios.post(`${BASE_URL}/saveDocument`, form, headers);
@@ -465,11 +454,7 @@ const RequestSignaturesPage = () => {
       const link = `${window.location.origin}/admin/request-signatures/sign-document/${documentId}?email=${email}`;
 
       if (navigator.share) {
-        await navigator.share({
-          title: "Sign Document",
-          text: "Please sign the document",
-          url: link,
-        });
+        await navigator.share({ title: "Sign Document", text: "Please sign the document", url: link });
         toast.success("Signature request sent", { containerId: "requestSignature" });
       } else {
         await navigator.clipboard.writeText(link);
@@ -508,10 +493,8 @@ const RequestSignaturesPage = () => {
         let signers = signatureElements
           .map((v) => ({ email: v.recipientEmail }))
           .filter(
-            (value, index, self) =>
-              index === self.findIndex((t) => t.email === value.email)
+            (v, i, self) => i === self.findIndex((t) => t.email === v.email)
           );
-
         form.append("signers", JSON.stringify(signers));
 
         const saveResponse = await axios.post(`${BASE_URL}/saveDocument`, form, headers);
@@ -524,16 +507,16 @@ const RequestSignaturesPage = () => {
 
       toast.success("Signature request sent", { containerId: "requestSignature" });
     } catch (error) {
-      const msg =
-        error?.response?.data?.error || "Something went wrong, please try again";
-      toast.error(msg, { containerId: "requestSignature" });
+      toast.error(error?.response?.data?.error || "Something went wrong, please try again", {
+        containerId: "requestSignature",
+      });
     } finally {
       setLoading(false);
       setIsSocial(false);
     }
   };
 
-  // ---- Rendering helpers ----
+  // ---------- Render helpers ----------
   const renderFieldPreview = (element) => {
     const baseClasses =
       "border-2 border-dashed p-2 cursor-move min-w-[100px] min-h-[40px]";
@@ -545,7 +528,7 @@ const RequestSignaturesPage = () => {
       [FIELD_TYPES.CHECKBOX]: "border-orange-500 bg-orange-50",
     };
 
-    const renderContent = () => {
+    const content = () => {
       if (element.value) {
         if (element.type === FIELD_TYPES.IMAGE) {
           return (
@@ -572,25 +555,17 @@ const RequestSignaturesPage = () => {
         return (
           <div className="flex items-center justify-center h-full">
             <span className="text-2xl font-bold text-gray-500">✍️</span>
-            <div className="text-xs text-gray-500 ml-2">
-              {element.placeholderText}
-            </div>
+            <div className="text-xs text-gray-500 ml-2">{element.placeholderText}</div>
           </div>
         );
       }
 
-      return (
-        <div className="text-xs text-gray-500">{element.placeholderText}</div>
-      );
+      return <div className="text-xs text-gray-500">{element.placeholderText}</div>;
     };
 
     return (
-      <div
-        className={`${baseClasses} ${
-          typeClasses[element.type] || "border-gray-500 bg-gray-50"
-        }`}
-      >
-        {renderContent()}
+      <div className={`${baseClasses} ${typeClasses[element.type] || "border-gray-500 bg-gray-50"}`}>
+        {content()}
       </div>
     );
   };
@@ -624,7 +599,7 @@ const RequestSignaturesPage = () => {
     );
   };
 
-  // ---- Render ----
+  // ---------- Render ----------
   return (
     <>
       <ToastContainer containerId={"requestSignature"} />
@@ -635,38 +610,26 @@ const RequestSignaturesPage = () => {
             <h2 className="text-2xl font-bold mb-6">Request Signatures</h2>
             <form onSubmit={handleFormSubmit}>
               <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">
-                  Document Title*
-                </label>
+                <label className="block text-sm font-medium mb-2">Document Title*</label>
                 <input
                   type="text"
                   required
                   className="w-full p-2 border rounded"
                   value={formData.title}
-                  onChange={(e) =>
-                    setFormData({ ...formData, title: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 />
               </div>
 
               <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">
-                  Upload Document*
-                </label>
+                <label className="block text-sm font-medium mb-2">Upload Document*</label>
                 <div
                   className="border-2 border-dashed p-8 text-center cursor-pointer"
                   onClick={() => fileInputRef.current.click()}
                 >
                   {file ? file.name : "Click to choose file or drag and drop"}
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    hidden
-                    onChange={handleFileChange}
-                    accept=".pdf"
-                  />
+                  <input type="file" ref={fileInputRef} hidden onChange={handleFileChange} accept=".pdf" />
                 </div>
-                <p className="text-sm text-gray-500 mt-1">PDF</p>
+                <p className="text-sm text-gray-500 mt-1">PDF only</p>
               </div>
 
               <div className="mb-4">
@@ -674,23 +637,17 @@ const RequestSignaturesPage = () => {
                 <textarea
                   className="w-full p-2 border rounded"
                   value={formData.note}
-                  onChange={(e) =>
-                    setFormData({ ...formData, note: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, note: e.target.value })}
                   placeholder="Note for recipients"
                 />
               </div>
 
               <div className="mb-6">
-                <label className="block text-sm font-medium mb-2">
-                  Select Folder
-                </label>
+                <label className="block text-sm font-medium mb-2">Select Folder</label>
                 <select
                   className="w-full p-2 border rounded"
                   value={formData.folder}
-                  onChange={(e) =>
-                    setFormData({ ...formData, folder: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, folder: e.target.value })}
                 >
                   <option value="default">Default</option>
                   <option value="contracts">Contracts</option>
@@ -731,57 +688,35 @@ const RequestSignaturesPage = () => {
                     className="w-full p-2 border rounded mb-2"
                     placeholder="Full Name"
                     value={formData.newRecipientName || ""}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        newRecipientName: e.target.value,
-                      })
-                    }
+                    onChange={(e) => setFormData({ ...formData, newRecipientName: e.target.value })}
                   />
                   <input
                     type="email"
                     className="w-full p-2 border rounded mb-2"
                     placeholder="Email Address"
                     value={formData.newRecipientEmail || ""}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        newRecipientEmail: e.target.value,
-                      })
-                    }
+                    onChange={(e) => setFormData({ ...formData, newRecipientEmail: e.target.value })}
                   />
                   <input
                     type="tel"
                     className="w-full p-2 border rounded mb-2"
                     placeholder="Phone Number"
                     value={formData.newRecipientPhone || ""}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        newRecipientPhone: e.target.value,
-                      })
-                    }
+                    onChange={(e) => setFormData({ ...formData, newRecipientPhone: e.target.value })}
                   />
                   <input
                     type="text"
                     className="w-full p-2 border rounded mb-2"
                     placeholder="Address"
                     value={formData.newRecipientAddress || ""}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        newRecipientAddress: e.target.value,
-                      })
-                    }
+                    onChange={(e) => setFormData({ ...formData, newRecipientAddress: e.target.value })}
                   />
 
                   <button
                     type="button"
                     onClick={addManualRecipient}
                     className="w-fit mx-auto bg-[#29354a] text-white px-4 py-2 rounded-[20px] flex"
-                    disabled={
-                      !formData.newRecipientEmail || !formData.newRecipientName
-                    }
+                    disabled={!formData.newRecipientEmail || !formData.newRecipientName}
                   >
                     Add Recipient
                   </button>
@@ -799,24 +734,17 @@ const RequestSignaturesPage = () => {
                             {recipient.name} ({recipient.email})
                           </p>
                           {recipient.phone && (
-                            <p className="text-xs text-gray-500 break-words">
-                              📞 {recipient.phone}
-                            </p>
+                            <p className="text-xs text-gray-500 break-words">📞 {recipient.phone}</p>
                           )}
                           {recipient.address && (
-                            <p className="text-xs text-gray-500 break-words">
-                              📍 {recipient.address}
-                            </p>
+                            <p className="text-xs text-gray-500 break-words">📍 {recipient.address}</p>
                           )}
                         </div>
 
                         <div className="flex flex-wrap sm:flex-nowrap gap-2 items-center">
                           <select
                             onChange={(e) =>
-                              handleChangeSign(
-                                recipient,
-                                e.target.value === "true"
-                              )
+                              handleChangeSign(recipient, e.target.value === "true")
                             }
                             value={recipient.willSign ? true : false}
                             id="documentAction"
@@ -827,10 +755,7 @@ const RequestSignaturesPage = () => {
                             <option value="false">Will Receive a Copy</option>
                           </select>
 
-                          <button
-                            onClick={() => removeRecipient(index)}
-                            className="text-red-500 text-lg"
-                          >
+                          <button onClick={() => removeRecipient(index)} className="text-red-500 text-lg">
                             ×
                           </button>
                         </div>
@@ -850,18 +775,19 @@ const RequestSignaturesPage = () => {
             </form>
           </div>
         ) : (
-          <div
-            className="flex min-h-screen lg:flex-row flex-col bg-gray-100"
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onDrop={handleDocumentDrop}
-            onDragOver={(e) => e.preventDefault()}
-            onTouchMove={handleElementTouchMove}
-            onTouchEnd={handleElementTouchEnd}
-            ref={containerRef}
-            style={{ touchAction: "none" }}
-          >
-            <div className="flex-1 p-2 lg:p-4 overflow-auto relative w-full">
+          // IMPORTANT: events + ref belong to the SAME relative container
+          <div className="flex min-h-screen lg:flex-row flex-col bg-gray-100">
+            <div
+              className="flex-1 p-2 lg:p-4 overflow-auto relative w-full"
+              ref={containerRef}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onDrop={handleDocumentDrop}
+              onDragOver={(e) => e.preventDefault()}
+              onTouchMove={handleElementTouchMove}
+              onTouchEnd={handleElementTouchEnd}
+              style={{ touchAction: "none" }}
+            >
               <button
                 onClick={handleSendRequest}
                 className="absolute top-4 right-4 z-50 bg-[#002864] text-white px-6 py-2 rounded-[20px] shadow-lg"
@@ -871,13 +797,11 @@ const RequestSignaturesPage = () => {
               </button>
 
               {file?.type === "application/pdf" ? (
-                <div className="pdf-container w-full">
+                <div className="w-full">
                   {numPages > 1 && (
                     <div className="flex items-center justify-center gap-4 mb-4 bg-white p-2 rounded shadow sticky top-0 z-40">
                       <button
-                        onClick={() =>
-                          setPageNumber((prev) => Math.max(prev - 1, 1))
-                        }
+                        onClick={() => setPageNumber((prev) => Math.max(prev - 1, 1))}
                         disabled={pageNumber <= 1}
                         className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
                       >
@@ -887,9 +811,7 @@ const RequestSignaturesPage = () => {
                         Page {pageNumber} of {numPages}
                       </span>
                       <button
-                        onClick={() =>
-                          setPageNumber((prev) => Math.min(prev + 1, numPages))
-                        }
+                        onClick={() => setPageNumber((prev) => Math.min(prev + 1, numPages))}
                         disabled={pageNumber >= numPages}
                         className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
                       >
@@ -902,9 +824,7 @@ const RequestSignaturesPage = () => {
                     file={file}
                     onLoadSuccess={({ numPages }) => setNumPages(numPages)}
                     onLoadError={() =>
-                      toast.error("Failed to load PDF", {
-                        containerId: "requestSignature",
-                      })
+                      toast.error("Failed to load PDF", { containerId: "requestSignature" })
                     }
                     loading="Loading PDF..."
                     className="w-full"
@@ -965,10 +885,7 @@ const RequestSignaturesPage = () => {
                 {formData.recipients
                   .filter((u) => u.willSign === true)
                   .map((recipient) => (
-                    <div
-                      key={recipient.email}
-                      className="mb-4 border-b pb-4 last:border-b-0"
-                    >
+                    <div key={recipient.email} className="mb-4 border-b pb-4 last:border-b-0">
                       <div className="font-medium mb-2">{recipient.email}</div>
                       <div className="grid grid-cols-2 gap-2">
                         {Object.values(FIELD_TYPES).map((type) =>
@@ -983,27 +900,20 @@ const RequestSignaturesPage = () => {
         )}
       </div>
 
+      {/* Send popup */}
       {showSendPopup && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg w-96 text-left">
             <div className="flex justify-between">
               <h3 className="text-xl font-bold mb-4">Send Mail</h3>
-              <div
-                className="text-[18px] cursor-pointer"
-                onClick={() => setShowSendPopup(false)}
-              >
+              <div className="text-[18px] cursor-pointer" onClick={() => setShowSendPopup(false)}>
                 X
               </div>
             </div>
-            <p className="mb-6">
-              Are you sure you want to send out this document for signatures?
-            </p>
+            <p className="mb-6">Are you sure you want to send out this document for signatures?</p>
 
             <div className="flex items-center mb-6">
-              <button
-                className="bg-[#002864] text-white px-4 w-full py-2 rounded"
-                onClick={sendThroughEmail}
-              >
+              <button className="bg-[#002864] text-white px-4 w-full py-2 rounded" onClick={sendThroughEmail}>
                 Send
               </button>
             </div>
@@ -1021,27 +931,16 @@ const RequestSignaturesPage = () => {
               .filter((u) => u.willSign === true)
               .map((val, i) => (
                 <div key={i} className="flex justify-between items-center">
-                  <div>
-                    <p className="text-gray-600">{val.email}</p>
-                  </div>
+                  <div><p className="text-gray-600">{val.email}</p></div>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => sendThroughShare(val.email)}
                       className="text-blue-600 hover:text-blue-800"
                       title="Share"
                     >
-                      <svg
-                        className="h-4 w-4"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z"
-                        />
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
                       </svg>
                     </button>
 
@@ -1061,6 +960,7 @@ const RequestSignaturesPage = () => {
         </div>
       )}
 
+      {/* Loading overlays */}
       {loading && !isSocial ? (
         <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50">
           <div className="bg-white p-8 rounded-xl shadow-xl w-full max-w-2xl mx-4">
@@ -1072,31 +972,14 @@ const RequestSignaturesPage = () => {
                 </span>
               </h3>
             </div>
-
             <div className="bg-blue-50 p-5 rounded-lg border border-blue-200 mb-6">
-              <h4 className="font-medium text-blue-800 mb-3 flex items-center gap-2">
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
-                  <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
-                </svg>
-                Invitation Process Status
-              </h4>
+              <h4 className="font-medium text-blue-800 mb-3">Invitation Process Status</h4>
               <div className="text-blue-700 space-y-2">
-                <p className="flex items-start gap-2">
-                  <span className="mt-1">•</span>
-                  <span>Secure invitation links being generated</span>
-                </p>
-                <p className="flex items-start gap-2">
-                  <span className="mt-1">•</span>
-                  <span>Email notifications queued for delivery</span>
-                </p>
-                <p className="flex items-start gap-2">
-                  <span className="mt-1">•</span>
-                  <span>Document access permissions being configured</span>
-                </p>
+                <p>• Secure invitation links being generated</p>
+                <p>• Email notifications queued for delivery</p>
+                <p>• Document access permissions being configured</p>
               </div>
             </div>
-
             <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
               <p className="text-yellow-800 text-sm text-center">
                 Note: Invitations contain secure links. Recipients will receive emails with signing instructions.
@@ -1116,24 +999,13 @@ const RequestSignaturesPage = () => {
                 </span>
               </h3>
             </div>
-
             <div className="bg-blue-50 p-5 rounded-lg border border-blue-200 mb-6">
               <div className="text-blue-700 space-y-2">
-                <p className="flex items-start gap-2">
-                  <span className="mt-1">•</span>
-                  <span>Securely generating unique signing links for each recipient</span>
-                </p>
-                <p className="flex items-start gap-2">
-                  <span className="mt-1">•</span>
-                  <span>Preparing invitation emails with document access</span>
-                </p>
-                <p className="flex items-start gap-2">
-                  <span className="mt-1">•</span>
-                  <span>Encrypting sensitive document information</span>
-                </p>
+                <p>• Securely generating unique signing links for each recipient</p>
+                <p>• Preparing invitation emails with document access</p>
+                <p>• Encrypting sensitive document information</p>
               </div>
             </div>
-
             <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
               <p className="text-gray-600 text-sm text-center">
                 This process typically takes 10–15 seconds. Please do not close this window.
