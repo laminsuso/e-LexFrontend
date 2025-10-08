@@ -50,3 +50,10 @@
   border-color: currentColor;
   border-top-color: transparent;
 }
+
+/* Thin scrollbar for the Field Types sidebar */
+aside::-webkit-scrollbar { width: 8px; }
+aside::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 9999px; }
+aside:hover::-webkit-scrollbar-thumb { background-color: #94a3b8; }
+/* Firefox */
+aside { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
