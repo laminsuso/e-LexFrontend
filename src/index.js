@@ -53,11 +53,12 @@ axios.interceptors.request.use((config) => {
 });
 
 axios.interceptors.response.use(
-  r => r,
+  (r) => r,
   (err) => {
     const status = err?.response?.status;
+
     if (status === 494 || status === 401 || status === 403) {
-      // if we were in a signing session, try to recover owner token
+      // restore owner token if a signer session was active
       if (localStorage.getItem('signing_session')) {
         const backup = localStorage.getItem('token_backup');
         if (backup) localStorage.setItem('token', backup);
@@ -66,8 +67,16 @@ axios.interceptors.response.use(
       } else {
         localStorage.removeItem('token');
       }
-      if (!location.pathname.includes('/join')) location.replace('/join');
+
+      //Use window.location (not the restricted global `location`)
+      if (typeof window !== 'undefined') {
+        const loc = window.location;
+        if (loc && !loc.pathname.includes('/join')) {
+          loc.replace('/join');
+        }
+      }
     }
+
     return Promise.reject(err);
   }
 );
