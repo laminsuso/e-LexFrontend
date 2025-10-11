@@ -1,45 +1,34 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Document, Page } from "react-pdf";
-import { pdfjs } from "react-pdf";
+import { Document, Page, pdfjs } from "react-pdf";
 import DatePicker from "react-datepicker";
 import { useLocation, useParams } from "react-router-dom";
 import axios from "axios";
 import { BASE_URL } from "./baseUrl";
 import { toast, ToastContainer } from "react-toastify";
 
-/** PDF worker with fallbacks */
-const PDF_WORKER_URLS = [
+/** PDF worker with fallbacks (robust in production) */
+const WORKERS = [
   `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`,
   `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`,
   `//cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`,
 ];
-const setPDFWorker = () => {
-  let workerIndex = 0;
-  const tryWorker = () => {
-    if (workerIndex < PDF_WORKER_URLS.length) {
-      pdfjs.GlobalWorkerOptions.workerSrc = PDF_WORKER_URLS[workerIndex];
-      workerIndex++;
-    }
-  };
-  tryWorker();
-  return tryWorker;
+let workerIdx = 0;
+pdfjs.GlobalWorkerOptions.workerSrc = WORKERS[workerIdx];
+const tryNextWorker = () => {
+  workerIdx = Math.min(workerIdx + 1, WORKERS.length - 1);
+  pdfjs.GlobalWorkerOptions.workerSrc = WORKERS[workerIdx];
 };
-const tryNextWorker = setPDFWorker();
 
-/** Clean labels used in the signer UI (we never show legacy “For: …”) */
+/** Clean labels shown to signers */
 const CONTACT_LABEL = { name: "Name", email: "Email", phone: "Phone" };
 
-/** Small default sizes for placeholders (grow only when content exists) */
-const MIN_SIG_W = 130;
-const MIN_SIG_H = 46;
-const MIN_TXT_W = 150;
-const MIN_TXT_H = 34;
-const MIN_DATE_W = 110;
-const MIN_DATE_H = 34;
-
-const MAX_SIG_W = 320;
-const MAX_SIG_H = 120;
-const MAX_TXT_W = 300; // cap text growth so it doesn't explode
+/** Compact default sizes (signature grows if needed) */
+const SIG_W = 160;
+const SIG_H = 60;
+const TXT_W = 200;
+const TXT_H = 40;
+const DATE_W = 120;
+const DATE_H = 45;
 
 /** Signature drawing config */
 const SIGNATURE_BLUE = "#1a73e8";
@@ -48,7 +37,7 @@ const MAX_WIDTH = 2.6;
 const SMOOTHING = 0.85;
 const VELOCITY_FILTER = 0.7;
 
-/* ---------------- helpers to resolve current recipient & sanitize -------------- */
+/* ---------- helpers ---------- */
 function resolveCurrentRecipient(signingData = {}) {
   const inviteEmail =
     (signingData.queryEmail ||
@@ -60,7 +49,7 @@ function resolveCurrentRecipient(signingData = {}) {
 
   if (Array.isArray(signingData.recipients) && inviteEmail) {
     const match = signingData.recipients.find(
-      (r) => (r.email || "").toLowerCase() === inviteEmail.toLowerCase()
+      r => (r.email || "").toLowerCase() === inviteEmail.toLowerCase()
     );
     if (match) return match;
   }
@@ -74,42 +63,34 @@ function resolveCurrentRecipient(signingData = {}) {
       (signingData.profile && signingData.profile.name) ||
       undefined,
     phone:
-      (signingData.user &&
-        (signingData.user.phone ||
-          signingData.user.mobile ||
-          signingData.user.phoneNumber)) ||
-      (signingData.profile &&
-        (signingData.profile.phone || signingData.profile.mobile)) ||
+      (signingData.user && (signingData.user.phone || signingData.user.mobile || signingData.user.phoneNumber)) ||
+      (signingData.profile && (signingData.profile.phone || signingData.profile.mobile)) ||
       undefined,
   };
 }
 
 function sanitizeIncomingElements(elements = []) {
-  return elements.map((el) => {
+  return elements.map(el => {
     const cleanLabel =
       el.type === "signature" ? "Sign" : CONTACT_LABEL[el.type] || el.type;
     return {
       ...el,
-      id: el._id || Math.random().toString(36).substr(2, 9),
+      id: el._id || Math.random().toString(36).slice(2),
       label: cleanLabel,
       value: el.value ?? null,
     };
   });
 }
 
-/** prefill Name/Email/Phone for current recipient + TODAY for date */
-function prefillRecipientFields(elements = [], recipient = {}) {
+function prefillRecipientContactFields(elements = [], recipient = {}) {
   if (!elements.length || !recipient) return elements;
   const rEmail = (recipient.email || "").toLowerCase();
   const rName = recipient.name || "";
   const rPhone = recipient.phone || recipient.mobile || recipient.phoneNumber || "";
-  const today = new Date().toLocaleDateString();
 
-  return elements.map((el) => {
+  return elements.map(el => {
     const assignedEmail = (el.recipientEmail || "").toLowerCase();
     const sameRecipient = !assignedEmail || (rEmail && assignedEmail === rEmail);
-
-    // only prefill for THIS signer
     if (!sameRecipient) return el;
 
     const hasValue = el.value != null && String(el.value).trim() !== "";
@@ -118,12 +99,14 @@ function prefillRecipientFields(elements = [], recipient = {}) {
     if (el.type === "name" && rName) return { ...el, value: rName };
     if (el.type === "email" && rEmail) return { ...el, value: recipient.email };
     if (el.type === "phone" && rPhone) return { ...el, value: rPhone };
-    if (el.type === "date") return { ...el, value: today };
+    if (el.type === "date") {
+      return { ...el, value: new Date().toISOString() }; // auto‑fill now; rendered as locale later
+    }
     return el;
   });
 }
 
-/* ============================== component ================================== */
+/* ============================== component ============================== */
 
 const SignDocumentPage = () => {
   const { documentId } = useParams();
@@ -131,7 +114,7 @@ const SignDocumentPage = () => {
 
   const [documentData, setDocumentData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [currentProfile, setCurrentProfile] = useState("");
+  const [currentProfile, setCurrentProfile] = useState(null);
   const [file, setFile] = useState(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [signatureElements, setSignatureElements] = useState([]);
@@ -141,85 +124,49 @@ const SignDocumentPage = () => {
   const [isDrawing, setIsDrawing] = useState(false);
   const [canvasContext, setCanvasContext] = useState(null);
   const [signatureType, setSignatureType] = useState();
-  const [preference, setPreference] = useState({
-    user: "",
-    allowed_signature_types: "",
-    notify_on_signatures: false,
-    timezone: "",
-    date_format: "",
-    send_in_order: "",
-  });
+  const [preference, setPreference] = useState(null);
   const [numPages, setNumPages] = useState(1);
 
-  const [currentUser, setCurrentUser] = useState("");
+  const [currentUser, setCurrentUser] = useState(null);
   const [loadingError, setLoadingError] = useState(null);
   const [pdfLoadError, setPdfLoadError] = useState(null);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [openedViaSharedLink, setOpenedViaSharedLink] = useState(false);
 
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
 
-  // offscreen canvas to measure text width for auto-sizing text boxes
-  const measureCanvasRef = useRef(null);
-  if (!measureCanvasRef.current && typeof window !== "undefined") {
-    measureCanvasRef.current = document.createElement("canvas");
-  }
-
-  const measureTextWidth = (text, baseFontPx = 14) => {
-    const ctx = measureCanvasRef.current.getContext("2d");
-    ctx.font = `${baseFontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif`;
-    const w = ctx.measureText(String(text || "")).width;
-    // add padding + small buffer
-    return Math.ceil(w + 24);
-  };
-
-  const autoSizeTextFields = (elements) =>
-    elements.map((el) => {
-      if (
-        ["name", "email", "phone", "text", "company", "jobTitle", "date"].includes(el.type) &&
-        el.value
-      ) {
-        const minW = el.type === "date" ? MIN_DATE_W : MIN_TXT_W;
-        const minH = el.type === "date" ? MIN_DATE_H : MIN_TXT_H;
-        const needed = measureTextWidth(el.value, 14);
-        const width = Math.min(Math.max(needed, minW), MAX_TXT_W);
-        const height = el.height || minH;
-        return { ...el, width, height };
-      }
-      return el;
-    });
-
-  /* ---------------------------- Load document ---------------------------- */
+  /* ---------------------------- load document ---------------------------- */
   useEffect(() => {
-    const load = async () => {
+    (async () => {
       try {
         const params = new URLSearchParams(location.search);
         const queryEmail = (params.get("email") || "").trim();
+        setOpenedViaSharedLink(!!queryEmail);
 
-        // 1) ensure session belongs to the email in the link
+        // Ensure we have a token for the email in the link
         let token = localStorage.getItem("token");
         let me = null;
 
         if (token) {
           const res = await axios.get(`${BASE_URL}/getUser`, {
-            headers: { authorization: `Bearer ${token}` },
+            headers: { authorization: `Bearer ${String(token).trim()}` },
           });
           me = res.data;
+
+          // If the token belongs to a different user, switch sessions for this tab
           if (
             queryEmail &&
             (res.data?.user?.email || "").toLowerCase() !== queryEmail.toLowerCase()
           ) {
-            const auth = await axios.post(`${BASE_URL}/registerAndLogin`, {
-              email: queryEmail,
-            });
+            const auth = await axios.post(`${BASE_URL}/registerAndLogin`, { email: queryEmail });
             localStorage.setItem("token", auth.data.token);
             token = auth.data.token;
             me = auth.data;
           }
         } else {
-          const auth = await axios.post(`${BASE_URL}/registerAndLogin`, {
-            email: queryEmail,
-          });
+          // No token: create a signer session for the link email
+          const auth = await axios.post(`${BASE_URL}/registerAndLogin`, { email: queryEmail });
           localStorage.setItem("token", auth.data.token);
           token = auth.data.token;
           me = auth.data;
@@ -229,14 +176,14 @@ const SignDocumentPage = () => {
         setPreference(me.preference);
         setCurrentProfile(me.profile);
 
-        // 2) load doc + elements
+        // Load doc + elements
         const docRes = await axios.get(`${BASE_URL}/getSpecificDoc/${documentId}`);
         const doc = docRes.data.doc || {};
         setDocumentData(doc);
         setFile(doc.file);
 
         const signingContext = {
-          recipients: doc.recipients || [],
+          recipients: doc.recipients || doc.signers || [],
           queryEmail,
           user: me.user,
           profile: me.profile,
@@ -244,22 +191,17 @@ const SignDocumentPage = () => {
 
         const recipient = resolveCurrentRecipient(signingContext);
         const sanitized = sanitizeIncomingElements(doc.elements || []);
+        const prefilled = prefillRecipientContactFields(sanitized, recipient);
 
-        // prefill THIS recipient + auto-size text boxes
-        const prefilled = prefillRecipientFields(sanitized, recipient);
-        const withSizes = autoSizeTextFields(prefilled);
-
-        setSignatureElements(withSizes);
+        setSignatureElements(prefilled);
       } catch (err) {
         console.error("Load error:", err);
         setLoadingError("Failed to load document");
       }
-    };
-
-    load();
+    })();
   }, [documentId, location.search]);
 
-  /* ------------------------ Signature drawing setup ----------------------- */
+  /* ------------------------ drawing setup for signatures ------------------------ */
   useEffect(() => {
     if (canvasRef.current && activeElement?.type === "signature" && signatureType === "draw") {
       const ctx = canvasRef.current.getContext("2d");
@@ -270,8 +212,7 @@ const SignDocumentPage = () => {
       setCanvasContext(ctx);
       if (currentProfile?.signature) {
         const img = new Image();
-        img.onload = () =>
-          ctx.drawImage(img, 0, 0, canvasRef.current.width, canvasRef.current.height);
+        img.onload = () => ctx.drawImage(img, 0, 0, canvasRef.current.width, canvasRef.current.height);
         img.src = currentProfile.signature;
       }
     }
@@ -288,14 +229,24 @@ const SignDocumentPage = () => {
     setPdfLoading(false);
     if (error.name === "MissingPDFException" || error.message?.includes("worker")) {
       tryNextWorker();
-      setTimeout(() => setFile((prev) => prev), 100);
+      setTimeout(() => setFile(prev => prev), 50);
     } else {
       setPdfLoadError(`Failed to load PDF: ${error.message || "Unknown error"}`);
     }
   };
-  const onDocumentLoadProgress = () => {};
 
-  /* ------------------------------ Utilities ------------------------------- */
+  const validateAndFixPDFUrl = (url) => {
+    if (!url) return null;
+    if (url.startsWith("/")) return `${BASE_URL}${url}`;
+    if (!/^https?:|^data:/.test(url)) return `https://${url}`;
+    return url;
+  };
+
+  /* ------------------------------ drawing logic ------------------------------ */
+  const lastPointRef = useRef(null);
+  const lastTimeRef = useRef(0);
+  const lineWidthRef = useRef(MAX_WIDTH);
+
   const getEventCoordinates = (e) => {
     const rect = canvasRef.current.getBoundingClientRect();
     if (e.touches && e.touches[0]) {
@@ -303,19 +254,6 @@ const SignDocumentPage = () => {
     }
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   };
-  const validateAndFixPDFUrl = (url) => {
-    if (!url) return null;
-    if (url.startsWith("/")) return `${BASE_URL}${url}`;
-    if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("data:")) {
-      return `https://${url}`;
-    }
-    return url;
-  };
-
-  // drawing state
-  const lastPointRef = useRef(null);
-  const lastTimeRef = useRef(0);
-  const lineWidthRef = useRef(MAX_WIDTH);
 
   const startDrawing = (e) => {
     if (!activeElement || !canvasRef.current || !canvasContext) return;
@@ -328,6 +266,7 @@ const SignDocumentPage = () => {
     canvasContext.moveTo(p.x, p.y);
     setIsDrawing(true);
   };
+
   const draw = (e) => {
     if (!isDrawing || !canvasContext) return;
     e.preventDefault();
@@ -356,6 +295,7 @@ const SignDocumentPage = () => {
     lastPointRef.current = p;
     lastTimeRef.current = now;
   };
+
   const stopDrawing = () => {
     if (!isDrawing) return;
     canvasContext?.closePath();
@@ -365,6 +305,7 @@ const SignDocumentPage = () => {
 
   /* ------------------------------ UI actions ------------------------------ */
   const handleElementClick = (element) => {
+    // only allow your own fields
     if ((element?.recipientEmail || "").toLowerCase() !== (currentUser?.email || "").toLowerCase()) {
       toast.error(
         `Your current email is ${currentUser?.email || "unknown"}; this field is for ${element.recipientEmail}`,
@@ -383,9 +324,6 @@ const SignDocumentPage = () => {
         break;
       case "initials":
         setInputValue(element.value || currentProfile?.initials || "");
-        break;
-      case "radio":
-        setInputValue(element.value || "");
         break;
       case "date":
         setSelectedDate(new Date(element.value || Date.now()));
@@ -408,18 +346,32 @@ const SignDocumentPage = () => {
     return canvas.toDataURL();
   };
 
-  // auto-size signature image & update element
+  /** Resize around the center so the signature doesn’t “jump” */
   const autoSizeSignature = (elementId, dataUrl) => {
     const img = new Image();
     img.onload = () => {
-      let w = img.width;
-      let h = img.height;
-      const scale = Math.min(MAX_SIG_W / w, MAX_SIG_H / h, 1);
-      w = Math.round(Math.max(w * scale, MIN_SIG_W));
-      h = Math.round(Math.max(h * scale, MIN_SIG_H));
+      setSignatureElements(prev =>
+        prev.map(el => {
+          if (el.id !== elementId) return el;
 
-      setSignatureElements((prev) =>
-        prev.map((el) => (el.id === elementId ? { ...el, value: dataUrl, width: w, height: h } : el))
+          const minW = SIG_W, minH = SIG_H;
+          // allow gentle growth but stay compact
+          const desiredMaxW = Math.max(el.width || minW, 220);
+          const desiredMaxH = Math.max(el.height || minH, 90);
+
+          let w = img.width;
+          let h = img.height;
+          const s = Math.min(desiredMaxW / w, desiredMaxH / h, 1);
+          w = Math.max(minW, Math.round(w * s));
+          h = Math.max(minH, Math.round(h * s));
+
+          // keep the visual center in the same place
+          const oldW = el.width || minW;
+          const centerX = (el.x || 0) + oldW / 2;
+          const newX = Math.round(centerX - w / 2);
+
+          return { ...el, value: dataUrl, width: w, height: h, x: newX };
+        })
       );
       setActiveElement(null);
       setInputValue("");
@@ -430,8 +382,9 @@ const SignDocumentPage = () => {
   const handleSave = () => {
     if (!activeElement) return;
     let value;
+
     switch (activeElement.type) {
-      case "signature": {
+      case "signature":
         value =
           signatureType === "draw"
             ? canvasRef.current?.toDataURL()
@@ -440,48 +393,36 @@ const SignDocumentPage = () => {
             : inputValue
             ? convertTextToSignature(inputValue)
             : null;
+
         if (value) {
           autoSizeSignature(activeElement.id, value);
           return;
         }
         break;
-      }
+
       case "checkbox":
         value = !!inputValue;
         break;
+
       case "image":
         value = inputValue;
         break;
+
       case "initials":
         value = (inputValue || "").toUpperCase();
         break;
-      case "radio":
-        value = inputValue;
-        break;
+
       case "date":
         value = selectedDate.toLocaleDateString();
         break;
+
       default:
         value = inputValue;
     }
 
-    // for text-like fields, auto-size width after saving
-    if (["name", "email", "phone", "text", "company", "jobTitle", "date"].includes(activeElement.type)) {
-      const minW = activeElement.type === "date" ? MIN_DATE_W : MIN_TXT_W;
-      const minH = activeElement.type === "date" ? MIN_DATE_H : MIN_TXT_H;
-      const needed = measureTextWidth(value, 14);
-      const width = Math.min(Math.max(needed, minW), MAX_TXT_W);
-      const height = activeElement.height || minH;
-
-      setSignatureElements((prev) =>
-        prev.map((el) => (el.id === activeElement.id ? { ...el, value, width, height } : el))
-      );
-    } else {
-      setSignatureElements((prev) =>
-        prev.map((el) => (el.id === activeElement.id ? { ...el, value } : el))
-      );
-    }
-
+    setSignatureElements(prev =>
+      prev.map(el => (el.id === activeElement.id ? { ...el, value } : el))
+    );
     setActiveElement(null);
     setInputValue("");
   };
@@ -500,14 +441,15 @@ const SignDocumentPage = () => {
 
   const handleSaveDocument = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = String(localStorage.getItem("token") || "").trim();
       setLoading(true);
 
+      // ensure date fields for THIS signer are set
       const today = new Date().toLocaleDateString();
-      const ensured = signatureElements.map((el) => {
+      const ensured = signatureElements.map(el => {
         if (
           el.type === "date" &&
-          (el.recipientEmail || "").toLowerCase() === (currentUser.email || "").toLowerCase() &&
+          (el.recipientEmail || "").toLowerCase() === (currentUser?.email || "").toLowerCase() &&
           (!el.value || String(el.value).trim() === "")
         ) {
           return { ...el, value: today };
@@ -522,10 +464,10 @@ const SignDocumentPage = () => {
       );
 
       const blob = new Blob([embedResponse.data], { type: "application/pdf" });
-      const file = new File([blob], `signedDocument-${documentId}`, { type: "application/pdf" });
+      const outFile = new File([blob], `signedDocument-${documentId}.pdf`, { type: "application/pdf" });
 
       const dataForm = new FormData();
-      dataForm.append("document", file);
+      dataForm.append("document", outFile);
       dataForm.append("documentId", documentId);
 
       await axios.patch(`${BASE_URL}/editDocument/${documentId}`, dataForm, {
@@ -539,7 +481,17 @@ const SignDocumentPage = () => {
       );
 
       toast.success("Document signed", { containerId: "signaturesign" });
-      window.location.href = "/admin";
+
+      // IMPORTANT: do not push signers to the owner dashboard
+      if (openedViaSharedLink) {
+        setTimeout(() => window.close(), 600);
+        // if close blocked, fall back to a light page
+        setTimeout(() => {
+          if (!document.hidden) window.location.href = "/signing-complete";
+        }, 1200);
+      } else {
+        window.location.href = "/admin";
+      }
     } catch (error) {
       setLoading(false);
       toast.error(error?.response?.data?.error || "Something went wrong", {
@@ -550,7 +502,7 @@ const SignDocumentPage = () => {
 
   const declineSign = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = String(localStorage.getItem("token") || "").trim();
       await axios.patch(
         `${BASE_URL}/declineDocs`,
         { email: currentUser.email, docId: documentId },
@@ -565,7 +517,7 @@ const SignDocumentPage = () => {
     }
   };
 
-  /* ----------------------------- Field preview ---------------------------- */
+  /* ----------------------------- field preview ----------------------------- */
   const renderFieldPreview = (element) => {
     const typeStyles = {
       signature: "border-blue-500 bg-blue-50",
@@ -583,33 +535,14 @@ const SignDocumentPage = () => {
       phone: "border-gray-500 bg-gray-50",
     };
 
-    const hasValue = element.value != null && String(element.value).trim() !== "";
-    // If no value, render the SMALL placeholder regardless of saved width/height
-    const width = hasValue
-      ? element.width ||
-        (element.type === "signature"
-          ? MIN_SIG_W
-          : element.type === "date"
-          ? MIN_DATE_W
-          : MIN_TXT_W)
-      : element.type === "signature"
-      ? MIN_SIG_W
-      : element.type === "date"
-      ? MIN_DATE_W
-      : MIN_TXT_W;
-
-    const height = hasValue
-      ? element.height ||
-        (element.type === "signature"
-          ? MIN_SIG_H
-          : element.type === "date"
-          ? MIN_DATE_H
-          : MIN_TXT_H)
-      : element.type === "signature"
-      ? MIN_SIG_H
-      : element.type === "date"
-      ? MIN_DATE_H
-      : MIN_TXT_H;
+    const width =
+      element.type === "signature"
+        ? element.width || SIG_W
+        : element.width || (element.type === "date" ? DATE_W : TXT_W);
+    const height =
+      element.type === "signature"
+        ? element.height || SIG_H
+        : element.height || (element.type === "date" ? DATE_H : TXT_H);
 
     return (
       <div
@@ -625,7 +558,7 @@ const SignDocumentPage = () => {
         }}
       >
         <div className="flex-1">
-          {hasValue ? (
+          {element.value ? (
             element.type === "signature" || element.type === "image" || element.type === "stamp" ? (
               <img src={element.value} alt={element.type} className="w-full h-full object-contain" />
             ) : element.type === "checkbox" ? (
@@ -635,16 +568,16 @@ const SignDocumentPage = () => {
             ) : element.type === "initials" ? (
               <div className="text-2xl font-bold text-center">{element.value}</div>
             ) : (
-              <span className="text-sm block break-words">{element.value}</span>
+              <span className="text-sm block break-words">
+                {element.type === "date" ? new Date(element.value).toLocaleDateString() : element.value}
+              </span>
             )
           ) : (
             <span className="text-gray-500 text-sm block break-words">
               {element.type === "signature" ? (
                 <>
                   <span className="block text-center font-semibold">Sign</span>
-                  <span className="block text-center" aria-hidden="true">
-                    🖊️
-                  </span>
+                  <span className="block text-center" aria-hidden="true">🖊️</span>
                 </>
               ) : (
                 CONTACT_LABEL[element.type] || element.label || element.type
@@ -670,7 +603,7 @@ const SignDocumentPage = () => {
               onClick={() => {
                 setPdfLoadError(null);
                 setPdfLoading(true);
-                setFile((prev) => prev);
+                setFile(prev => prev);
               }}
               className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
             >
@@ -697,7 +630,6 @@ const SignDocumentPage = () => {
         file={validatedUrl}
         onLoadSuccess={onDocumentLoadSuccess}
         onLoadError={onDocumentLoadError}
-        onLoadProgress={onDocumentLoadProgress}
         loading={
           <div className="flex items-center justify-center h-64">
             <div className="text-center">
@@ -706,25 +638,11 @@ const SignDocumentPage = () => {
             </div>
           </div>
         }
-        error={
-          <div className="flex flex-col items-center justify-center h-64 bg-red-50 border-2 border-red-200 rounded-lg">
-            <div className="text-red-600 text-center p-4">
-              <h3 className="font-semibold mb-2">PDF Loading Failed</h3>
-              <p className="text-sm mb-4">Unable to load the PDF document</p>
-              <button
-                onClick={() => window.location.reload()}
-                className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
-              >
-                Refresh Page
-              </button>
-            </div>
-          </div>
-        }
       >
         {numPages > 1 && (
           <div className="flex items-center justify-center gap-4 mb-4 bg-white p-2 rounded shadow sticky top-0 z-40">
             <button
-              onClick={() => setPageNumber((prev) => Math.max(prev - 1, 1))}
+              onClick={() => setPageNumber(prev => Math.max(prev - 1, 1))}
               disabled={pageNumber <= 1}
               className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
             >
@@ -734,7 +652,7 @@ const SignDocumentPage = () => {
               Page {pageNumber} of {numPages}
             </span>
             <button
-              onClick={() => setPageNumber((prev) => Math.min(prev + 1, numPages))}
+              onClick={() => setPageNumber(prev => Math.min(prev + 1, numPages))}
               disabled={pageNumber >= numPages}
               className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
             >
@@ -751,11 +669,6 @@ const SignDocumentPage = () => {
           loading={
             <div className="flex items-center justify-center h-96">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-            </div>
-          }
-          error={
-            <div className="flex items-center justify-center h-96 bg-gray-100">
-              <p className="text-gray-600">Failed to load page</p>
             </div>
           }
         />
@@ -779,7 +692,7 @@ const SignDocumentPage = () => {
             onClick={handleSaveDocument}
             className="absolute top-4 right-4 z-50 bg-[#002864] text-white px-6 py-2 rounded-[20px] shadow-l"
             disabled={signatureElements.some(
-              (el) =>
+              el =>
                 !el.value &&
                 (el.recipientEmail || "").toLowerCase() === (currentUser?.email || "").toLowerCase()
             )}
@@ -790,37 +703,18 @@ const SignDocumentPage = () => {
           {loadingError ? (
             <div className="text-red-500 text-center mt-8">{loadingError}</div>
           ) : file ? (
-            file.includes(".pdf") ? (
-              <div className="relative">
-                {renderPDFDocument()}
-                {signatureElements
-                  .filter((element) => element.pageNumber === pageNumber || !element.pageNumber)
-                  .map(renderFieldPreview)}
-              </div>
-            ) : (
-              <div className="relative">
-                <img
-                  src={file}
-                  alt="Document"
-                  className="max-w-full h-auto"
-                  onError={(e) => {
-                    e.target.style.display = "none";
-                    e.target.nextSibling.style.display = "block";
-                  }}
-                />
-                <div style={{ display: "none" }} className="text-red-500 text-center mt-8">
-                  Failed to load document image
-                </div>
-                {signatureElements.map(renderFieldPreview)}
-              </div>
-            )
+            <div className="relative">
+              {renderPDFDocument()}
+              {signatureElements
+                .filter(el => el.pageNumber === pageNumber || !el.pageNumber)
+                .map(renderFieldPreview)}
+            </div>
           ) : (
             <div className="flex items-center justify-center h-full">
               <p>Loading document...</p>
             </div>
           )}
 
-          {/* Modal for editing elements */}
           {activeElement && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
               <div className="bg-white p-6 rounded-lg w-96 max-h-[90vh] overflow-y-auto">
@@ -853,8 +747,8 @@ const SignDocumentPage = () => {
                       <div className="mb-4">
                         <canvas
                           ref={canvasRef}
-                          width={MIN_SIG_W}
-                          height={MIN_SIG_H}
+                          width={SIG_W}
+                          height={SIG_H}
                           className="border mb-2"
                           onMouseDown={startDrawing}
                           onMouseMove={draw}
@@ -886,7 +780,7 @@ const SignDocumentPage = () => {
                           </div>
                         )}
                         <label className="w-full border-2 border-dashed p-8 text-center cursor-pointer block mb-4">
-                          {currentProfile?.signature ? "Click to upload new image" : "Click to upload signature image"}
+                          Click to upload signature image
                           <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
                         </label>
                       </div>
@@ -955,23 +849,6 @@ const SignDocumentPage = () => {
                         <div className="text-2xl font-bold">{inputValue}</div>
                       </div>
                     )}
-                  </div>
-                )}
-
-                {activeElement.type === "radio" && (
-                  <div className="space-y-2">
-                    {(activeElement.options?.split(",") || []).map((option, i) => (
-                      <label key={i} className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name={activeElement.id}
-                          checked={inputValue === option.trim()}
-                          onChange={() => setInputValue(option.trim())}
-                          className="w-4 h-4"
-                        />
-                        <span className="text-sm">{option.trim()}</span>
-                      </label>
-                    ))}
                   </div>
                 )}
 
