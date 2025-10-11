@@ -41,8 +41,35 @@ import ChangePassword from "./changePassword";
 import UseTemplate from "./usetemplate";
 import PublicProfile from "./publicProfile";
 import Contact from "./Contact";
+import axios from "axios";
 const stripePromise = loadStripe(
   "pk_test_51OwuO4LcfLzcwwOYdssgGfUSfOgWT1LwO6ewi3CEPewY7WEL9ATqH6WJm3oAcLDA3IgUvVYLVEBMIEu0d8fUwhlw009JwzEYmV"
+);
+
+axios.interceptors.request.use((config) => {
+  const t = localStorage.getItem('token');
+  if (t) config.headers.authorization = `Bearer ${String(t).trim()}`;
+  return config;
+});
+
+axios.interceptors.response.use(
+  r => r,
+  (err) => {
+    const status = err?.response?.status;
+    if (status === 494 || status === 401 || status === 403) {
+      // if we were in a signing session, try to recover owner token
+      if (localStorage.getItem('signing_session')) {
+        const backup = localStorage.getItem('token_backup');
+        if (backup) localStorage.setItem('token', backup);
+        localStorage.removeItem('token_backup');
+        localStorage.removeItem('signing_session');
+      } else {
+        localStorage.removeItem('token');
+      }
+      if (!location.pathname.includes('/join')) location.replace('/join');
+    }
+    return Promise.reject(err);
+  }
 );
 
 const router = createBrowserRouter([

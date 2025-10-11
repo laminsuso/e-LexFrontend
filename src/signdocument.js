@@ -106,6 +106,28 @@ function prefillRecipientContactFields(elements = [], recipient = {}) {
   });
 }
 
+/** Keep owner token safe during a signer session */
+function stashOwnerToken(token) {
+  try {
+    if (token) localStorage.setItem('token_backup', token);
+    localStorage.setItem('signing_session', '1');
+  } catch {}
+}
+function restoreOwnerToken() {
+  try {
+    const backup = localStorage.getItem('token_backup');
+    if (backup) {
+      localStorage.setItem('token', backup);
+      localStorage.removeItem('token_backup');
+    } else {
+      // if we don't have a backup, at least clear the signer token
+      localStorage.removeItem('token');
+    }
+    localStorage.removeItem('signing_session');
+  } catch {}
+}
+
+
 /* ============================== component ============================== */
 
 const SignDocumentPage = () => {
@@ -159,17 +181,35 @@ const SignDocumentPage = () => {
             queryEmail &&
             (res.data?.user?.email || "").toLowerCase() !== queryEmail.toLowerCase()
           ) {
+
+            //keeps the owner's token safe
+            stashOwnerToken(token);
             const auth = await axios.post(`${BASE_URL}/registerAndLogin`, { email: queryEmail });
             localStorage.setItem("token", auth.data.token);
             token = auth.data.token;
             me = auth.data;
           }
         } else {
-          // No token: create a signer session for the link email
-          const auth = await axios.post(`${BASE_URL}/registerAndLogin`, { email: queryEmail });
-          localStorage.setItem("token", auth.data.token);
-          token = auth.data.token;
-          me = auth.data;
+          // // No token: create a signer session for the link email
+          // const auth = await axios.post(`${BASE_URL}/registerAndLogin`, { email: queryEmail });
+          // localStorage.setItem("token", auth.data.token);
+          // token = auth.data.token;
+          // me = auth.data;
+
+        if (queryEmail) {
+           // mark that we’re in a signing session and log in the signer
+           stashOwnerToken(null);
+           const auth = await axios.post(`${BASE_URL}/registerAndLogin`, {
+             email: queryEmail,
+           });
+           localStorage.setItem("token", auth.data.token);
+           token = auth.data.token;
+           me = auth.data;
+        } else {
+           // no token and no signer email — force login page
+           window.location.replace('/join');
+           return;
+            }
         }
 
         setCurrentUser(me.user);
@@ -482,6 +522,9 @@ const SignDocumentPage = () => {
 
       toast.success("Document signed", { containerId: "signaturesign" });
 
+      // put back the real owner token if we switched to a signer
+      if (openedViaSharedLink) restoreOwnerToken();
+
       // IMPORTANT: do not push signers to the owner dashboard
       if (openedViaSharedLink) {
         setTimeout(() => window.close(), 600);
@@ -509,13 +552,29 @@ const SignDocumentPage = () => {
         { headers: { authorization: `Bearer ${token}` } }
       );
       toast.success("Sign declined successfully", { containerId: "signaturesign" });
-      setTimeout(() => window.close(), 500);
+      //setTimeout(() => window.close(), 500);
+      //restore owner token and close
+      restoreOwnerToken();
+      setTimeout(()=> window.close(), 500);
     } catch (error) {
       toast.error(error?.response?.data?.error || "Something went wrong", {
         containerId: "signaturesign",
       });
     }
   };
+
+    useEffect(() => {
+    const restoreOnClose = () => {
+      if (openedViaSharedLink) restoreOwnerToken();
+    };
+    window.addEventListener('beforeunload', restoreOnClose);
+    window.addEventListener('pagehide', restoreOnClose);
+    return () => {
+      window.removeEventListener('beforeunload', restoreOnClose);
+      window.removeEventListener('pagehide', restoreOnClose);
+    };
+  }, [openedViaSharedLink]);
+
 
   /* ----------------------------- field preview ----------------------------- */
   const renderFieldPreview = (element) => {
