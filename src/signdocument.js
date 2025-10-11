@@ -29,18 +29,17 @@ const tryNextWorker = setPDFWorker();
 /** Clean labels used in the signer UI (we never show legacy “For: …”) */
 const CONTACT_LABEL = { name: "Name", email: "Email", phone: "Phone" };
 
-/** Default sizes (keep boxes small first) */
-const SIG_W = 160;
-const SIG_H = 60;
-const SIG_W_MAX = 320;
-const SIG_H_MAX = 120;
+/** Small default sizes for placeholders (grow only when content exists) */
+const MIN_SIG_W = 130;
+const MIN_SIG_H = 46;
+const MIN_TXT_W = 150;
+const MIN_TXT_H = 34;
+const MIN_DATE_W = 110;
+const MIN_DATE_H = 34;
 
-const TXT_W = 200;
-const TXT_H = 40;
-const TXT_W_MAX = 320;
-
-const DATE_W = 120;
-const DATE_H = 45;
+const MAX_SIG_W = 320;
+const MAX_SIG_H = 120;
+const MAX_TXT_W = 300; // cap text growth so it doesn't explode
 
 /** Signature drawing config */
 const SIGNATURE_BLUE = "#1a73e8";
@@ -49,7 +48,7 @@ const MAX_WIDTH = 2.6;
 const SMOOTHING = 0.85;
 const VELOCITY_FILTER = 0.7;
 
-/* ---------- Helpers to pick the right recipient and pre-fill fields ---------- */
+/* ---------------- helpers to resolve current recipient & sanitize -------------- */
 function resolveCurrentRecipient(signingData = {}) {
   const inviteEmail =
     (signingData.queryEmail ||
@@ -76,17 +75,19 @@ function resolveCurrentRecipient(signingData = {}) {
       undefined,
     phone:
       (signingData.user &&
-        (signingData.user.phone || signingData.user.mobile || signingData.user.phoneNumber)) ||
-      (signingData.profile && (signingData.profile.phone || signingData.profile.mobile)) ||
+        (signingData.user.phone ||
+          signingData.user.mobile ||
+          signingData.user.phoneNumber)) ||
+      (signingData.profile &&
+        (signingData.profile.phone || signingData.profile.mobile)) ||
       undefined,
   };
 }
 
-/** Remove legacy labels/For: UI and normalize for display */
 function sanitizeIncomingElements(elements = []) {
   return elements.map((el) => {
-    const type = el.type;
-    const cleanLabel = type === "signature" ? "Sign" : CONTACT_LABEL[type] || el.type;
+    const cleanLabel =
+      el.type === "signature" ? "Sign" : CONTACT_LABEL[el.type] || el.type;
     return {
       ...el,
       id: el._id || Math.random().toString(36).substr(2, 9),
@@ -96,80 +97,33 @@ function sanitizeIncomingElements(elements = []) {
   });
 }
 
-/* --------------------- Canvas helpers (auto-size + trim) -------------------- */
+/** prefill Name/Email/Phone for current recipient + TODAY for date */
+function prefillRecipientFields(elements = [], recipient = {}) {
+  if (!elements.length || !recipient) return elements;
+  const rEmail = (recipient.email || "").toLowerCase();
+  const rName = recipient.name || "";
+  const rPhone = recipient.phone || recipient.mobile || recipient.phoneNumber || "";
+  const today = new Date().toLocaleDateString();
 
-const offscreenCanvas = document.createElement("canvas");
-const offCtx = offscreenCanvas.getContext("2d");
+  return elements.map((el) => {
+    const assignedEmail = (el.recipientEmail || "").toLowerCase();
+    const sameRecipient = !assignedEmail || (rEmail && assignedEmail === rEmail);
 
-/** Measure text width to grow text boxes only if needed */
-function measureTextPx(text, font = "14px system-ui, -apple-system, Segoe UI, Roboto") {
-  offCtx.font = font;
-  const metrics = offCtx.measureText(text || "");
-  return Math.ceil(metrics.width);
-}
-function autosizeTextBoxWidth(current, text) {
-  const paddingX = 16; // matches .p-2
-  const needed = measureTextPx(text) + paddingX * 2;
-  return Math.max(Math.min(Math.max(current, TXT_W), TXT_W_MAX), Math.min(needed, TXT_W_MAX));
-}
+    // only prefill for THIS signer
+    if (!sameRecipient) return el;
 
-/** Trim PNG/JPG margins (transparent or near-white) so the ink aligns perfectly */
-async function trimImageDataURL(dataUrl) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const w = img.naturalWidth;
-      const h = img.naturalHeight;
-      offscreenCanvas.width = w;
-      offscreenCanvas.height = h;
-      offCtx.clearRect(0, 0, w, h);
-      offCtx.drawImage(img, 0, 0);
+    const hasValue = el.value != null && String(el.value).trim() !== "";
+    if (hasValue) return el;
 
-      const { data } = offCtx.getImageData(0, 0, w, h);
-
-      let minX = w,
-        minY = h,
-        maxX = 0,
-        maxY = 0;
-      let found = false;
-
-      // Treat alpha>10 OR non-white (RGB < 248) as ink
-      for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-          const i = (y * w + x) * 4;
-          const r = data[i],
-            g = data[i + 1],
-            b = data[i + 2],
-            a = data[i + 3];
-          const nonTransparent = a > 10;
-          const notWhite = r < 248 || g < 248 || b < 248;
-          if (nonTransparent && notWhite) {
-            found = true;
-            if (x < minX) minX = x;
-            if (y < minY) minY = y;
-            if (x > maxX) maxX = x;
-            if (y > maxY) maxY = y;
-          }
-        }
-      }
-
-      if (!found) return resolve(dataUrl); // nothing to trim
-
-      const trimW = Math.max(1, maxX - minX + 1);
-      const trimH = Math.max(1, maxY - minY + 1);
-      const out = document.createElement("canvas");
-      const octx = out.getContext("2d");
-      out.width = trimW;
-      out.height = trimH;
-      octx.drawImage(offscreenCanvas, minX, minY, trimW, trimH, 0, 0, trimW, trimH);
-      resolve(out.toDataURL("image/png"));
-    };
-    img.crossOrigin = "anonymous";
-    img.src = dataUrl;
+    if (el.type === "name" && rName) return { ...el, value: rName };
+    if (el.type === "email" && rEmail) return { ...el, value: recipient.email };
+    if (el.type === "phone" && rPhone) return { ...el, value: rPhone };
+    if (el.type === "date") return { ...el, value: today };
+    return el;
   });
 }
 
-/* ================================= Component ================================ */
+/* ============================== component ================================== */
 
 const SignDocumentPage = () => {
   const { documentId } = useParams();
@@ -205,6 +159,36 @@ const SignDocumentPage = () => {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
 
+  // offscreen canvas to measure text width for auto-sizing text boxes
+  const measureCanvasRef = useRef(null);
+  if (!measureCanvasRef.current && typeof window !== "undefined") {
+    measureCanvasRef.current = document.createElement("canvas");
+  }
+
+  const measureTextWidth = (text, baseFontPx = 14) => {
+    const ctx = measureCanvasRef.current.getContext("2d");
+    ctx.font = `${baseFontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif`;
+    const w = ctx.measureText(String(text || "")).width;
+    // add padding + small buffer
+    return Math.ceil(w + 24);
+  };
+
+  const autoSizeTextFields = (elements) =>
+    elements.map((el) => {
+      if (
+        ["name", "email", "phone", "text", "company", "jobTitle", "date"].includes(el.type) &&
+        el.value
+      ) {
+        const minW = el.type === "date" ? MIN_DATE_W : MIN_TXT_W;
+        const minH = el.type === "date" ? MIN_DATE_H : MIN_TXT_H;
+        const needed = measureTextWidth(el.value, 14);
+        const width = Math.min(Math.max(needed, minW), MAX_TXT_W);
+        const height = el.height || minH;
+        return { ...el, width, height };
+      }
+      return el;
+    });
+
   /* ---------------------------- Load document ---------------------------- */
   useEffect(() => {
     const load = async () => {
@@ -212,7 +196,7 @@ const SignDocumentPage = () => {
         const params = new URLSearchParams(location.search);
         const queryEmail = (params.get("email") || "").trim();
 
-        // Session for the link owner
+        // 1) ensure session belongs to the email in the link
         let token = localStorage.getItem("token");
         let me = null;
 
@@ -225,13 +209,17 @@ const SignDocumentPage = () => {
             queryEmail &&
             (res.data?.user?.email || "").toLowerCase() !== queryEmail.toLowerCase()
           ) {
-            const auth = await axios.post(`${BASE_URL}/registerAndLogin`, { email: queryEmail });
+            const auth = await axios.post(`${BASE_URL}/registerAndLogin`, {
+              email: queryEmail,
+            });
             localStorage.setItem("token", auth.data.token);
             token = auth.data.token;
             me = auth.data;
           }
         } else {
-          const auth = await axios.post(`${BASE_URL}/registerAndLogin`, { email: queryEmail });
+          const auth = await axios.post(`${BASE_URL}/registerAndLogin`, {
+            email: queryEmail,
+          });
           localStorage.setItem("token", auth.data.token);
           token = auth.data.token;
           me = auth.data;
@@ -241,6 +229,7 @@ const SignDocumentPage = () => {
         setPreference(me.preference);
         setCurrentProfile(me.profile);
 
+        // 2) load doc + elements
         const docRes = await axios.get(`${BASE_URL}/getSpecificDoc/${documentId}`);
         const doc = docRes.data.doc || {};
         setDocumentData(doc);
@@ -252,37 +241,15 @@ const SignDocumentPage = () => {
           user: me.user,
           profile: me.profile,
         };
+
         const recipient = resolveCurrentRecipient(signingContext);
-
-        // sanitize + prefill (keep small; autosize only for present values)
         const sanitized = sanitizeIncomingElements(doc.elements || []);
-        const prefilled = sanitized.map((el) => {
-          const assignedEmail = (el.recipientEmail || "").toLowerCase();
-          const rEmail = (recipient.email || "").toLowerCase();
-          const sameRecipient = !assignedEmail || (rEmail && assignedEmail === rEmail);
-          if (!sameRecipient) return el;
 
-          if (!el.value || String(el.value).trim() === "") {
-            if (el.type === "name" && recipient.name) {
-              return { ...el, value: recipient.name, width: autosizeTextBoxWidth(el.width || TXT_W, recipient.name) };
-            }
-            if (el.type === "email" && recipient.email) {
-              return { ...el, value: recipient.email, width: autosizeTextBoxWidth(el.width || TXT_W, recipient.email) };
-            }
-            if (el.type === "phone" && (recipient.phone || recipient.mobile || recipient.phoneNumber)) {
-              const phone = recipient.phone || recipient.mobile || recipient.phoneNumber;
-              return { ...el, value: phone, width: autosizeTextBoxWidth(el.width || TXT_W, phone) };
-            }
-          }
-          // If already has a value, keep width but ensure it's not below default
-          if (["name", "email", "phone", "text", "jobTitle", "company"].includes(el.type) && el.value) {
-            const w = autosizeTextBoxWidth(el.width || TXT_W, el.value);
-            return { ...el, width: w };
-          }
-          return el;
-        });
+        // prefill THIS recipient + auto-size text boxes
+        const prefilled = prefillRecipientFields(sanitized, recipient);
+        const withSizes = autoSizeTextFields(prefilled);
 
-        setSignatureElements(prefilled);
+        setSignatureElements(withSizes);
       } catch (err) {
         console.error("Load error:", err);
         setLoadingError("Failed to load document");
@@ -303,7 +270,8 @@ const SignDocumentPage = () => {
       setCanvasContext(ctx);
       if (currentProfile?.signature) {
         const img = new Image();
-        img.onload = () => ctx.drawImage(img, 0, 0, canvasRef.current.width, canvasRef.current.height);
+        img.onload = () =>
+          ctx.drawImage(img, 0, 0, canvasRef.current.width, canvasRef.current.height);
         img.src = currentProfile.signature;
       }
     }
@@ -440,22 +408,18 @@ const SignDocumentPage = () => {
     return canvas.toDataURL();
   };
 
-  // auto-size signature box AFTER we have trimmed the image
-  const autosizeSignatureBox = (elementId, dataUrl) => {
+  // auto-size signature image & update element
+  const autoSizeSignature = (elementId, dataUrl) => {
     const img = new Image();
     img.onload = () => {
-      const iw = img.width;
-      const ih = img.height;
-
-      // Fit inside max WH, and ensure min WH
-      const scale = Math.min(SIG_W_MAX / iw, SIG_H_MAX / ih, 1);
-      let w = Math.round(Math.max(iw * scale, SIG_W));
-      let h = Math.round(Math.max(ih * scale, SIG_H));
+      let w = img.width;
+      let h = img.height;
+      const scale = Math.min(MAX_SIG_W / w, MAX_SIG_H / h, 1);
+      w = Math.round(Math.max(w * scale, MIN_SIG_W));
+      h = Math.round(Math.max(h * scale, MIN_SIG_H));
 
       setSignatureElements((prev) =>
-        prev.map((el) =>
-          el.id === elementId ? { ...el, value: dataUrl, width: w, height: h } : el
-        )
+        prev.map((el) => (el.id === elementId ? { ...el, value: dataUrl, width: w, height: h } : el))
       );
       setActiveElement(null);
       setInputValue("");
@@ -468,7 +432,7 @@ const SignDocumentPage = () => {
     let value;
     switch (activeElement.type) {
       case "signature": {
-        const dataUrl =
+        value =
           signatureType === "draw"
             ? canvasRef.current?.toDataURL()
             : signatureType === "image"
@@ -476,11 +440,9 @@ const SignDocumentPage = () => {
             : inputValue
             ? convertTextToSignature(inputValue)
             : null;
-
-        if (dataUrl) {
-          // trim to remove margins so alignment is exact
-          trimImageDataURL(dataUrl).then((trimmed) => autosizeSignatureBox(activeElement.id, trimmed));
-          return; // autosize will finalize the save
+        if (value) {
+          autoSizeSignature(activeElement.id, value);
+          return;
         }
         break;
       }
@@ -503,14 +465,16 @@ const SignDocumentPage = () => {
         value = inputValue;
     }
 
-    // For text-like fields, only grow width if content exceeds default
-    if (
-      ["name", "email", "phone", "text", "jobTitle", "company"].includes(activeElement.type) &&
-      value
-    ) {
-      const newW = autosizeTextBoxWidth(activeElement.width || TXT_W, value);
+    // for text-like fields, auto-size width after saving
+    if (["name", "email", "phone", "text", "company", "jobTitle", "date"].includes(activeElement.type)) {
+      const minW = activeElement.type === "date" ? MIN_DATE_W : MIN_TXT_W;
+      const minH = activeElement.type === "date" ? MIN_DATE_H : MIN_TXT_H;
+      const needed = measureTextWidth(value, 14);
+      const width = Math.min(Math.max(needed, minW), MAX_TXT_W);
+      const height = activeElement.height || minH;
+
       setSignatureElements((prev) =>
-        prev.map((el) => (el.id === activeElement.id ? { ...el, value, width: newW, height: TXT_H } : el))
+        prev.map((el) => (el.id === activeElement.id ? { ...el, value, width, height } : el))
       );
     } else {
       setSignatureElements((prev) =>
@@ -525,12 +489,7 @@ const SignDocumentPage = () => {
   const handleImageUpload = (e) => {
     if (!activeElement || !e.target.files[0]) return;
     const reader = new FileReader();
-    reader.onload = (event) => {
-      // Trim margins before sizing so placement stays true to what user sees
-      trimImageDataURL(event.target.result).then((trimmed) =>
-        autosizeSignatureBox(activeElement.id, trimmed)
-      );
-    };
+    reader.onload = (event) => autoSizeSignature(activeElement.id, event.target.result);
     reader.readAsDataURL(e.target.files[0]);
   };
 
@@ -544,7 +503,6 @@ const SignDocumentPage = () => {
       const token = localStorage.getItem("token");
       setLoading(true);
 
-      // Ensure current date is set for this signer if empty
       const today = new Date().toLocaleDateString();
       const ensured = signatureElements.map((el) => {
         if (
@@ -552,16 +510,9 @@ const SignDocumentPage = () => {
           (el.recipientEmail || "").toLowerCase() === (currentUser.email || "").toLowerCase() &&
           (!el.value || String(el.value).trim() === "")
         ) {
-          return { ...el, value: today, width: el.width || DATE_W, height: el.height || DATE_H };
+          return { ...el, value: today };
         }
-        // Make sure any box has at least its defaults (prevents jumpy sizes)
-        if (el.type === "signature") {
-          return { ...el, width: el.width || SIG_W, height: el.height || SIG_H };
-        }
-        if (el.type === "date") {
-          return { ...el, width: el.width || DATE_W, height: el.height || DATE_H };
-        }
-        return { ...el, width: el.width || TXT_W, height: el.height || TXT_H };
+        return el;
       });
 
       const embedResponse = await axios.post(
@@ -632,15 +583,33 @@ const SignDocumentPage = () => {
       phone: "border-gray-500 bg-gray-50",
     };
 
-    // dimensions (signature can be auto-sized if width/height set)
-    const width =
-      element.type === "signature"
-        ? element.width || SIG_W
-        : element.width || (element.type === "date" ? DATE_W : TXT_W);
-    const height =
-      element.type === "signature"
-        ? element.height || SIG_H
-        : element.height || (element.type === "date" ? DATE_H : TXT_H);
+    const hasValue = element.value != null && String(element.value).trim() !== "";
+    // If no value, render the SMALL placeholder regardless of saved width/height
+    const width = hasValue
+      ? element.width ||
+        (element.type === "signature"
+          ? MIN_SIG_W
+          : element.type === "date"
+          ? MIN_DATE_W
+          : MIN_TXT_W)
+      : element.type === "signature"
+      ? MIN_SIG_W
+      : element.type === "date"
+      ? MIN_DATE_W
+      : MIN_TXT_W;
+
+    const height = hasValue
+      ? element.height ||
+        (element.type === "signature"
+          ? MIN_SIG_H
+          : element.type === "date"
+          ? MIN_DATE_H
+          : MIN_TXT_H)
+      : element.type === "signature"
+      ? MIN_SIG_H
+      : element.type === "date"
+      ? MIN_DATE_H
+      : MIN_TXT_H;
 
     return (
       <div
@@ -656,14 +625,9 @@ const SignDocumentPage = () => {
         }}
       >
         <div className="flex-1">
-          {element.value ? (
+          {hasValue ? (
             element.type === "signature" || element.type === "image" || element.type === "stamp" ? (
-              <img
-                src={element.value}
-                alt={element.type}
-                className="w-full h-full object-contain block"
-                style={{ imageRendering: "auto" }}
-              />
+              <img src={element.value} alt={element.type} className="w-full h-full object-contain" />
             ) : element.type === "checkbox" ? (
               <div className="flex items-center gap-2">
                 <input type="checkbox" checked={!!element.value} readOnly className="w-4 h-4" />
@@ -889,8 +853,8 @@ const SignDocumentPage = () => {
                       <div className="mb-4">
                         <canvas
                           ref={canvasRef}
-                          width={SIG_W}
-                          height={SIG_H}
+                          width={MIN_SIG_W}
+                          height={MIN_SIG_H}
                           className="border mb-2"
                           onMouseDown={startDrawing}
                           onMouseMove={draw}
@@ -970,7 +934,9 @@ const SignDocumentPage = () => {
                       Click to upload image
                       <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
                     </label>
-                    {inputValue && <img src={inputValue} alt="Preview" className="mx-auto max-h-32 object-contain" />}
+                    {inputValue && (
+                      <img src={inputValue} alt="Preview" className="mx-auto max-h-32 object-contain" />
+                    )}
                   </div>
                 )}
 
