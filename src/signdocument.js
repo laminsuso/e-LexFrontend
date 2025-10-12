@@ -692,7 +692,8 @@ const SignDocumentPage = () => {
                   className="max-w-full h-auto"
                   onError={(e) => {
                     e.currentTarget.style.display = "none";
-                    (e.currentTarget.nextSibling as HTMLElement).style.display = "block";
+                    const next = e.currentTarget.nextElementSibling;
+                    if (next) next.style.display = "block";
                   }}
                 />
                 <div style={{ display: "none" }} className="text-red-500 text-center mt-8">
