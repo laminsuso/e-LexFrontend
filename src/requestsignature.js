@@ -1,3 +1,4 @@
+// src/requestsignature.js
 import React, { useState, useRef, useEffect } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { v4 as uuidv4 } from "uuid";
@@ -21,24 +22,6 @@ const FIELD_TYPES = {
   PHONE: "phone",
 };
 
-/* ---------- Default + minimum sizes per field (px) ---------- */
-const DIMENSIONS = {
-  [FIELD_TYPES.SIGNATURE]: { width: 160, height: 60, minW: 80, minH: 30 },
-  [FIELD_TYPES.INITIALS]:  { width: 140, height: 48, minW: 80, minH: 32 },
-  [FIELD_TYPES.NAME]:      { width: 200, height: 40, minW: 120, minH: 36 },
-  [FIELD_TYPES.EMAIL]:     { width: 220, height: 40, minW: 140, minH: 36 },
-  [FIELD_TYPES.PHONE]:     { width: 180, height: 40, minW: 120, minH: 36 },
-  [FIELD_TYPES.JOB_TITLE]: { width: 200, height: 40, minW: 120, minH: 36 },
-  [FIELD_TYPES.COMPANY]:   { width: 200, height: 40, minW: 120, minH: 36 },
-  [FIELD_TYPES.TEXT]:      { width: 200, height: 40, minW: 120, minH: 36 },
-  [FIELD_TYPES.DATE]:      { width: 120, height: 45, minW: 90,  minH: 32 },
-  [FIELD_TYPES.IMAGE]:     { width: 220, height: 80, minW: 120, minH: 60 },
-  [FIELD_TYPES.CHECKBOX]:  { width: 24,  height: 24, minW: 18,  minH: 18 },
-};
-
-const getDims = (type) => DIMENSIONS[type] || DIMENSIONS[FIELD_TYPES.TEXT];
-const isResizable = (type) => type !== FIELD_TYPES.CHECKBOX; // everything except checkbox
-
 const RequestSignaturesPage = () => {
   // Step + file + PDF
   const [step, setStep] = useState(1);
@@ -57,10 +40,9 @@ const RequestSignaturesPage = () => {
   const [contactBook, setContactBook] = useState([]);
   const [signatureElements, setSignatureElements] = useState([]);
 
-  // Drag & resize
+  // Dragging/positioning
   const [draggedElement, setDraggedElement] = useState(null);
   const [positionOffset, setPositionOffset] = useState({ x: 0, y: 0 });
-  const [resizing, setResizing] = useState(null); // { id, type, startX, startY, startW, startH }
 
   // Toolbox touch drag
   const [touchDraggedElement, setTouchDraggedElement] = useState(null);
@@ -72,15 +54,12 @@ const RequestSignaturesPage = () => {
   const [shareId, setShareId] = useState("");
 
   // Refs
-  const containerRef = useRef(null); // important: same relative container for Page + overlays
+  const containerRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  /* ---------------------------------------------------------------------- */
-  /*                                Helpers                                 */
-  /* ---------------------------------------------------------------------- */
+  /* ---------- Helpers ---------- */
 
-  // Normalize element coordinates to backend's 800px canvas.
-  // Uses PDF canvas width + container scroll offsets (prevents right-column shift).
+  // **Important**: convert absolute positions to the 800px PDF canvas
   const normalizeForPdf = (elements) => {
     const container = containerRef.current;
     if (!container || !elements?.length) return elements || [];
@@ -99,9 +78,7 @@ const RequestSignaturesPage = () => {
 
       if (pageEl) {
         const canvas = pageEl.querySelector("canvas");
-        pageWidth =
-          (canvas && canvas.clientWidth) || pageEl.clientWidth || pageWidth;
-
+        pageWidth = (canvas && canvas.clientWidth) || pageEl.clientWidth || pageWidth;
         const pageRect = pageEl.getBoundingClientRect();
         const contRect = container.getBoundingClientRect();
         offsetX = pageRect.left - contRect.left + container.scrollLeft;
@@ -118,7 +95,7 @@ const RequestSignaturesPage = () => {
         ...el,
         x: Math.round(localX * s),
         y: Math.round(localY * s),
-        ...(el.width  != null ? { width:  Math.round(Number(el.width)  * s) } : {}),
+        ...(el.width != null ? { width: Math.round(Number(el.width) * s) } : {}),
         ...(el.height != null ? { height: Math.round(Number(el.height) * s) } : {}),
       };
     });
@@ -136,7 +113,6 @@ const RequestSignaturesPage = () => {
 
   const handleFormSubmit = (e) => {
     e.preventDefault();
-
     if (!formData.title?.trim()) {
       toast.error("Please enter document title", { containerId: "requestSignature" });
       return;
@@ -170,7 +146,7 @@ const RequestSignaturesPage = () => {
     fetchContactBooks();
   }, []);
 
-  /* ----------------------------- Toolbox (touch) ----------------------------- */
+  /* ---------- Toolbox (touch) ---------- */
   const handleToolTouchStart = (type, email, options = {}) => (e) => {
     e.preventDefault();
     setTouchDraggedElement({ type, email, options });
@@ -195,9 +171,7 @@ const RequestSignaturesPage = () => {
     setTouchDraggedElement(null);
   };
 
-  /* ----------------------- Placed elements: drag & resize -------------------- */
-
-  // === Dragging (body) ===
+  /* ---------- Placed elements: mouse/touch drag ---------- */
   const handleElementTouchStart = (e, id) => {
     e.preventDefault();
     const touch = e.touches[0];
@@ -209,30 +183,7 @@ const RequestSignaturesPage = () => {
     setPositionOffset({ x: x - el.x, y: y - el.y });
     setDraggedElement(id);
   };
-
-  const doResize = (clientX, clientY) => {
-    if (!resizing) return;
-    const { id, type, startX, startY, startW, startH } = resizing;
-    const dx = clientX - startX;
-    const dy = clientY - startY;
-    const { minW, minH } = getDims(type);
-
-    setSignatureElements((prev) =>
-      prev.map((el) => {
-        if (el.id !== id) return el;
-        let newW = Math.max((startW || getDims(type).width) + dx, minW);
-        let newH = Math.max((startH || getDims(type).height) + dy, minH);
-        return { ...el, width: newW, height: newH };
-      })
-    );
-  };
-
   const handleElementTouchMove = (e) => {
-    if (resizing) {
-      const t = e.touches[0];
-      doResize(t.clientX, t.clientY);
-      return;
-    }
     if (!draggedElement) return;
     e.preventDefault();
     const touch = e.touches[0];
@@ -243,11 +194,7 @@ const RequestSignaturesPage = () => {
       prev.map((el) => (el.id === draggedElement ? { ...el, x, y } : el))
     );
   };
-
-  const handleElementTouchEnd = () => {
-    setDraggedElement(null);
-    setResizing(null);
-  };
+  const handleElementTouchEnd = () => setDraggedElement(null);
 
   const handleMouseDown = (e, id) => {
     const rect = containerRef.current.getBoundingClientRect();
@@ -258,13 +205,7 @@ const RequestSignaturesPage = () => {
     setPositionOffset({ x: x - el.x, y: y - el.y });
     setDraggedElement(id);
   };
-
   const handleMouseMove = (e) => {
-    // Resize takes precedence if active
-    if (resizing) {
-      doResize(e.clientX, e.clientY);
-      return;
-    }
     if (!draggedElement) return;
     const rect = containerRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left - positionOffset.x;
@@ -273,45 +214,9 @@ const RequestSignaturesPage = () => {
       prev.map((el) => (el.id === draggedElement ? { ...el, x, y } : el))
     );
   };
+  const handleMouseUp = () => setDraggedElement(null);
 
-  const handleMouseUp = () => {
-    setDraggedElement(null);
-    setResizing(null);
-  };
-
-  // === Resizing (handle) ===
-  const handleResizeMouseDown = (e, id) => {
-    e.stopPropagation();
-    e.preventDefault();
-    const el = signatureElements.find((s) => s.id === id);
-    if (!el) return;
-    setResizing({
-      id,
-      type: el.type,
-      startX: e.clientX,
-      startY: e.clientY,
-      startW: el.width || getDims(el.type).width,
-      startH: el.height || getDims(el.type).height,
-    });
-  };
-
-  const handleResizeTouchStart = (e, id) => {
-    e.stopPropagation();
-    e.preventDefault();
-    const el = signatureElements.find((s) => s.id === id);
-    if (!el) return;
-    const t = e.touches[0];
-    setResizing({
-      id,
-      type: el.type,
-      startX: t.clientX,
-      startY: t.clientY,
-      startW: el.width || getDims(el.type).width,
-      startH: el.height || getDims(el.type).height,
-    });
-  };
-
-  /* -------------------------------- Recipients ------------------------------- */
+  /* ---------- Recipients ---------- */
   const handleChangeSign = (recipient, value) => {
     setFormData((prev) => ({
       ...prev,
@@ -321,68 +226,21 @@ const RequestSignaturesPage = () => {
     }));
   };
 
-  // Add from contact book (carry name/phone if known)
-  // const addRecipient = () => {
-  //   if (!selectedEmail) return;
-  //   const exists = formData.recipients.some((r) => r.email === selectedEmail);
-  //   if (exists) {
-  //     toast.error("This email has already been added to recipients.", {
-  //       containerId: "requestSignature",
-  //     });
-  //     return;
-  //   }
-
-  //   const contact =
-  //     contactBook.find((c) => (c?.email || "").toLowerCase() === selectedEmail.toLowerCase()) ||
-  //     {};
-
-  //   setFormData((prev) => ({
-  //     ...prev,
-  //     recipients: [
-  //       ...prev.recipients,
-  //       {
-  //         email: selectedEmail,
-  //         name: contact.name || "",
-  //         phone: contact.phone || "",
-  //         address: contact.address || "",
-  //         willSign: true,
-  //       },
-  //     ],
-  //   }));
-  //   setSelectedEmail("");
-  // };
-
   const addRecipient = () => {
-  if (!selectedEmail) return;
-
-  const exists = formData.recipients.some((r) => r.email === selectedEmail);
-  if (exists) {
-    toast.error("This email has already been added to recipients.", {
-      containerId: "requestSignature",
-    });
-    return;
-  }
-
-  const contact = contactBook.find((c) => c?.email === selectedEmail) || {};
-  const resolvedName =
-    (contact.name && String(contact.name).trim()) ||
-    [contact.firstName, contact.lastName].filter(Boolean).join(" ").trim() ||
-    contact.fullName ||
-    contact.displayName ||
-    "";
-
-  const resolvedPhone = contact.phone || contact.phoneNumber || contact.mobile || "";
-
-  setFormData((prev) => ({
-    ...prev,
-    recipients: [
-      ...prev.recipients,
-      { email: selectedEmail, name: resolvedName, phone: resolvedPhone, willSign: true },
-    ],
-  }));
-  setSelectedEmail("");
-};
-
+    if (!selectedEmail) return;
+    const exists = formData.recipients.some((r) => r.email === selectedEmail);
+    if (exists) {
+      toast.error("This email has already been added to recipients.", {
+        containerId: "requestSignature",
+      });
+      return;
+    }
+    setFormData((prev) => ({
+      ...prev,
+      recipients: [...prev.recipients, { email: selectedEmail, willSign: true }],
+    }));
+    setSelectedEmail("");
+  };
 
   const addManualRecipient = () => {
     const {
@@ -410,6 +268,7 @@ const RequestSignaturesPage = () => {
       toast.error("Please enter a valid phone number", { containerId: "requestSignature" });
       return;
     }
+
     setFormData((prev) => ({
       ...prev,
       recipients: [
@@ -436,57 +295,57 @@ const RequestSignaturesPage = () => {
     }));
   };
 
-  /* -------------------------------- Elements -------------------------------- */
-
-  // NOTE: We do NOT prefill values in the builder (prevents duplicates when signing).
+  /* ---------- Elements ---------- */
   const createPlaceholder = (type, email, x = 50, y = 50, options = {}) => {
-    const d = getDims(type);
+    const rec = (formData.recipients || []).find((r) => r.email === email) || {};
+    let prefill = "";
+    if (type === FIELD_TYPES.NAME && rec.name) prefill = rec.name;
+    if (type === FIELD_TYPES.EMAIL && email) prefill = email;
+    if (type === FIELD_TYPES.PHONE && rec.phone) prefill = rec.phone;
     const newElement = {
       id: uuidv4(),
       type,
       x,
       y,
-      width: d.width,
-      height: d.height,
-      pageNumber, // current page number
+      pageNumber,
       recipientEmail: email,
-      placeholderText: getPlaceholderText(type),
+      placeholderText:
+        type === FIELD_TYPES.SIGNATURE
+          ? "Sign"
+          : type === FIELD_TYPES.NAME
+          ? "Name"
+          : type === FIELD_TYPES.EMAIL
+          ? "Email"
+          : type === FIELD_TYPES.PHONE
+          ? "Phone"
+          : type === FIELD_TYPES.DATE
+          ? "date"
+          : type === FIELD_TYPES.JOB_TITLE
+          ? "Job Title"
+          : type === FIELD_TYPES.COMPANY
+          ? "Company"
+          : type === FIELD_TYPES.CHECKBOX
+          ? "Checkbox"
+          : type === FIELD_TYPES.IMAGE
+          ? "Image"
+          : "Text",
       isPlaceholder: true,
       ...options,
-      value: "",
+      value: prefill,
     };
     setSignatureElements((prev) => [...prev, newElement]);
-  };
-
-  const getPlaceholderText = (type) => {
-    const texts = {
-      [FIELD_TYPES.SIGNATURE]: "Sign",
-      [FIELD_TYPES.INITIALS]: "Initials",
-      [FIELD_TYPES.NAME]: "Name",
-      [FIELD_TYPES.JOB_TITLE]: "Job Title",
-      [FIELD_TYPES.COMPANY]: "Company",
-      [FIELD_TYPES.DATE]: "Date",
-      [FIELD_TYPES.TEXT]: "Text Field",
-      [FIELD_TYPES.CHECKBOX]: "Checkbox",
-      [FIELD_TYPES.IMAGE]: "Image",
-      [FIELD_TYPES.EMAIL]: "Email",
-      [FIELD_TYPES.PHONE]: "Phone",
-    };
-    return texts[type];
   };
 
   const deleteElement = (id) => {
     setSignatureElements((prev) => prev.filter((el) => el.id !== id));
   };
 
-  /* ---------------------------- Toolbox drag/drop ---------------------------- */
-  const handleToolDragStart =
-    (type, email, options = {}) =>
-    (e) => {
-      e.dataTransfer.setData("type", type);
-      e.dataTransfer.setData("email", email);
-      e.dataTransfer.setData("options", JSON.stringify(options));
-    };
+  /* ---------- Toolbox drag & drop ---------- */
+  const handleToolDragStart = (type, email, options = {}) => (e) => {
+    e.dataTransfer.setData("type", type);
+    e.dataTransfer.setData("email", email);
+    e.dataTransfer.setData("options", JSON.stringify(options));
+  };
 
   const handleDocumentDrop = (e) => {
     e.preventDefault();
@@ -503,7 +362,7 @@ const RequestSignaturesPage = () => {
     }
   };
 
-  /* --------------------------------- Send ---------------------------------- */
+  /* ---------- Send flow ---------- */
   const handleSendRequest = () => {
     const required = formData.recipients.filter((u) => u.willSign === true);
     const ok = required.every((r) =>
@@ -553,7 +412,7 @@ const RequestSignaturesPage = () => {
       setFormData({ title: "", note: "", folder: "default", recipients: [] });
       setSignatureElements([]);
       setLoading(false);
-      window.location.reload(true);
+      window.location.reload();
     } catch (e) {
       const msg = e?.response?.data?.error || "Something went wrong please try again";
       toast.error(msg, { containerId: "requestSignature" });
@@ -581,7 +440,7 @@ const RequestSignaturesPage = () => {
         form.append("elements", JSON.stringify(elementsToSave));
 
         let signers = signatureElements
-          .map((val) => ({ email: val.recipientEmail }))
+          .map((v) => ({ email: v.recipientEmail }))
           .filter((v, i, self) => i === self.findIndex((t) => t.email === v.email));
         form.append("signers", JSON.stringify(signers));
 
@@ -653,9 +512,10 @@ const RequestSignaturesPage = () => {
     }
   };
 
-  /* ---------------------------- Render helpers ----------------------------- */
+  /* ---------- Render helpers ---------- */
   const renderFieldPreview = (element) => {
-    const baseClasses = "border-2 border-dashed p-2 cursor-move";
+    const baseClasses =
+      "border-2 border-dashed p-2 cursor-move min-w-[100px] min-h-[40px]";
     const typeClasses = {
       [FIELD_TYPES.SIGNATURE]: "border-blue-500 bg-blue-50",
       [FIELD_TYPES.INITIALS]: "border-green-500 bg-green-50",
@@ -663,10 +523,6 @@ const RequestSignaturesPage = () => {
       [FIELD_TYPES.IMAGE]: "border-indigo-500 bg-indigo-50",
       [FIELD_TYPES.CHECKBOX]: "border-orange-500 bg-orange-50",
     };
-
-    const { width: defW, height: defH } = getDims(element.type);
-    const width = element.width ?? defW;
-    const height = element.height ?? defH;
 
     const content = () => {
       if (element.value) {
@@ -679,9 +535,8 @@ const RequestSignaturesPage = () => {
             />
           );
         }
-        return <div className="text-sm mt-1">{element.value}</div>;
+        return <div className="text-sm mt-1 break-words">{element.value}</div>;
       }
-
       if (element.type === FIELD_TYPES.CHECKBOX) {
         return (
           <div className="flex items-center gap-2">
@@ -690,16 +545,6 @@ const RequestSignaturesPage = () => {
           </div>
         );
       }
-
-      if (element.type === FIELD_TYPES.INITIALS) {
-        return (
-          <div className="flex items-center justify-center h-full">
-            <span className="text-2xl font-bold text-gray-500">✍️</span>
-            <div className="text-xs text-gray-500 ml-2">{element.placeholderText}</div>
-          </div>
-        );
-      }
-
       if (element.type === FIELD_TYPES.SIGNATURE) {
         return (
           <div className="text-center leading-tight">
@@ -708,26 +553,12 @@ const RequestSignaturesPage = () => {
           </div>
         );
       }
-
       return <div className="text-xs text-gray-500">{element.placeholderText}</div>;
     };
 
     return (
-      <div
-        className={`${baseClasses} ${typeClasses[element.type] || "border-gray-500 bg-gray-50"}`}
-        style={{ width, minHeight: height, height }}
-      >
+      <div className={`${baseClasses} ${typeClasses[element.type] || "border-gray-500 bg-gray-50"}`}>
         {content()}
-
-        {/* Resize handle */}
-        {isResizable(element.type) && (
-          <div
-            className="absolute right-0 bottom-0 w-3 h-3 bg-blue-500 border-2 border-white rounded-sm cursor-se-resize"
-            style={{ transform: "translate(50%, 50%)" }}
-            onMouseDown={(e) => handleResizeMouseDown(e, element.id)}
-            onTouchStart={(e) => handleResizeTouchStart(e, element.id)}
-          />
-        )}
       </div>
     );
   };
@@ -750,7 +581,7 @@ const RequestSignaturesPage = () => {
     return (
       <div
         key={`${type}-${email}`}
-        className="p-2 bg-gray-100 hover:bg-gray-200 text-sm cursor-move"
+        className="p-2 bg-gray-100 hover:bg-gray-200 text-sm cursor-move rounded"
         draggable
         onDragStart={handleToolDragStart(type, email)}
         onTouchStart={handleToolTouchStart(type, email)}
@@ -762,7 +593,7 @@ const RequestSignaturesPage = () => {
     );
   };
 
-  /* --------------------------------- Render -------------------------------- */
+  /* ---------- Render ---------- */
   return (
     <>
       <ToastContainer containerId={"requestSignature"} />
@@ -786,7 +617,7 @@ const RequestSignaturesPage = () => {
               <div className="mb-4">
                 <label className="block text-sm font-medium mb-2">Upload Document*</label>
                 <div
-                  className="border-2 border-dashed p-8 text-center cursor-pointer"
+                  className="border-2 border-dashed p-8 text-center cursor-pointer rounded"
                   onClick={() => fileInputRef.current.click()}
                 >
                   {file ? file.name : "Click to choose file or drag and drop"}
@@ -906,12 +737,8 @@ const RequestSignaturesPage = () => {
 
                         <div className="flex flex-wrap sm:flex-nowrap gap-2 items-center">
                           <select
-                            onChange={(e) =>
-                              handleChangeSign(recipient, e.target.value === "true")
-                            }
+                            onChange={(e) => handleChangeSign(recipient, e.target.value === "true")}
                             value={recipient.willSign ? true : false}
-                            id="documentAction"
-                            name="documentAction"
                             className="border rounded p-1 w-full sm:w-auto"
                           >
                             <option value="true">Needs to Sign</option>
@@ -938,7 +765,6 @@ const RequestSignaturesPage = () => {
             </form>
           </div>
         ) : (
-          // Step 2: place + resize + send
           <div className="flex min-h-screen lg:flex-row flex-col bg-gray-100">
             <div
               className="flex-1 p-2 lg:p-4 overflow-auto relative w-full"
@@ -1005,9 +831,7 @@ const RequestSignaturesPage = () => {
                     />
                   </Document>
                 </div>
-              ) : (
-                ""
-              )}
+              ) : null}
 
               {signatureElements
                 .filter((el) => el.pageNumber === pageNumber)
@@ -1018,10 +842,7 @@ const RequestSignaturesPage = () => {
                     style={{
                       left: `${element.x}px`,
                       top: `${element.y}px`,
-                      zIndex:
-                        draggedElement === element.id || resizing?.id === element.id
-                          ? 1000
-                          : 1,
+                      zIndex: draggedElement === element.id ? 1000 : 1,
                     }}
                   >
                     <div
@@ -1043,7 +864,8 @@ const RequestSignaturesPage = () => {
                 ))}
             </div>
 
-            {/* <div className="lg:w-[320px] w-full bg-white p-4 shadow-lg overflow-y-auto">
+            {/* Right pane with its own scroll bar */}
+            <div className="lg:w-[320px] w-full bg-white p-4 shadow-lg overflow-y-auto sticky top-0 max-h-[calc(100vh-16px)]">
               <h3 className="text-xl font-bold mb-4">Field Types</h3>
 
               <div className="mb-6">
@@ -1052,49 +874,14 @@ const RequestSignaturesPage = () => {
                   .filter((u) => u.willSign === true)
                   .map((recipient) => (
                     <div key={recipient.email} className="mb-4 border-b pb-4 last:border-b-0">
-                      <div className="font-medium mb-2">{recipient.email}</div>
-                      <div className="grid grid-cols-2 gap-2">
-                        {Object.values(FIELD_TYPES).map((type) =>
-                          renderToolItem(type, recipient.email)
-                        )}
-                      </div>
-                    </div>
-                  ))}
-              </div>
-            </div> */}
-
-            <aside
-              className="
-                lg:w-[340px] w-full flex-shrink-0 bg-white p-4 shadow-lg border-l
-                lg:sticky lg:top-0 lg:h-screen              /* desktop: pinned + full height */
-                h-[55vh]                                     /* mobile/tablet: shorter but scrollable */
-                overflow-y-auto
-              "
-              >
-              {/* Optional pinned header inside the sidebar */}
-              <div className="sticky top-0 bg-white pb-3 z-10">
-                <h3 className="text-xl font-bold">Field Types</h3>
-              </div>
-
-              {/* Scrollable content */}
-              <div className="pt-2">
-                <h4 className="font-medium mb-2">Recipients</h4>
-
-                {formData.recipients
-                  .filter((u) => u.willSign === true)
-                  .map((recipient) => (
-                    <div key={recipient.email} className="mb-4 border-b pb-4 last:border-b-0">
                       <div className="font-medium mb-2 break-all">{recipient.email}</div>
                       <div className="grid grid-cols-2 gap-2">
-                        {Object.values(FIELD_TYPES).map((type) =>
-                          renderToolItem(type, recipient.email)
-                        )}
+                        {Object.values(FIELD_TYPES).map((type) => renderToolItem(type, recipient.email))}
                       </div>
                     </div>
                   ))}
               </div>
-            </aside>
-
+            </div>
           </div>
         )}
       </div>
@@ -1130,7 +917,9 @@ const RequestSignaturesPage = () => {
               .filter((u) => u.willSign === true)
               .map((val, i) => (
                 <div key={i} className="flex justify-between items-center">
-                  <div><p className="text-gray-600">{val.email}</p></div>
+                  <div>
+                    <p className="text-gray-600 break-all">{val.email}</p>
+                  </div>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => sendThroughShare(val.email)}
@@ -1138,8 +927,12 @@ const RequestSignaturesPage = () => {
                       title="Share"
                     >
                       <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                          d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z"
+                        />
                       </svg>
                     </button>
 
@@ -1207,14 +1000,12 @@ const RequestSignaturesPage = () => {
             </div>
             <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
               <p className="text-gray-600 text-sm text-center">
-                This process typically takes 10–15 seconds. Please do not close this window.
+                This process typically takes a few seconds. Please do not close this window.
               </p>
             </div>
           </div>
         </div>
-      ) : (
-        ""
-      )}
+      ) : null}
     </>
   );
 };
