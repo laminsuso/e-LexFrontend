@@ -7,7 +7,7 @@ import axios from "axios";
 import { BASE_URL } from "./baseUrl";
 import { toast, ToastContainer } from "react-toastify";
 
-/** PDF worker with fallbacks (robust for CDN hiccups) */
+/* ------------------------ PDF worker with fallbacks ----------------------- */
 const PDF_WORKER_URLS = [
   `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`,
   `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`,
@@ -26,10 +26,10 @@ const setPDFWorker = () => {
 };
 const tryNextWorker = setPDFWorker();
 
-/** Clean labels we show in the signer UI */
+/* ------------------------------ UI constants ------------------------------ */
 const CONTACT_LABEL = { name: "Name", email: "Email", phone: "Phone" };
 
-/** Compact default sizes (keep boxes small – no jumping) */
+const VIRTUAL_WIDTH = 800; // must match backend scale
 const SIG_W = 160;
 const SIG_H = 60;
 const TXT_W = 200;
@@ -37,14 +37,13 @@ const TXT_H = 40;
 const DATE_W = 120;
 const DATE_H = 40;
 
-/** Signature drawing config */
 const SIGNATURE_BLUE = "#1a73e8";
 const MIN_WIDTH = 0.8;
 const MAX_WIDTH = 2.6;
 const SMOOTHING = 0.85;
 const VELOCITY_FILTER = 0.7;
 
-/* ---------- Helpers to map recipient & pre‑fill fields ---------- */
+/* --------------------------- Recipient resolution -------------------------- */
 function resolveCurrentRecipient(signingData = {}) {
   const inviteEmail =
     (signingData.queryEmail ||
@@ -77,33 +76,32 @@ function resolveCurrentRecipient(signingData = {}) {
   };
 }
 
-/** Remove legacy labels/“For:” text, keep value if any */
+/* ---------------------- Elements cleanup + prefilling ---------------------- */
 function sanitizeIncomingElements(elements = []) {
   return elements.map((el) => {
     const type = el.type;
     const cleanLabel = type === "signature" ? "Sign" : CONTACT_LABEL[type] || el.type;
+    const pageNumber = el.pageNumber || 1;
     return {
       ...el,
       id: el._id || Math.random().toString(36).slice(2),
       label: cleanLabel,
       value: el.value ?? null,
+      pageNumber,
     };
   });
 }
 
-/** Pre‑fill Name/Email/Phone for the *current* recipient, and set Date today */
 function prefillForRecipient(elements = [], recipient = {}) {
   if (!elements.length || !recipient) return elements;
   const rEmail = (recipient.email || "").toLowerCase();
   const rName = recipient.name || "";
   const rPhone = recipient.phone || recipient.mobile || recipient.phoneNumber || "";
-
   const today = new Date().toLocaleDateString();
 
   return elements.map((el) => {
     const assignedEmail = (el.recipientEmail || "").toLowerCase();
     const sameRecipient = !assignedEmail || (rEmail && assignedEmail === rEmail);
-
     if (!sameRecipient) return el;
 
     const hasValue = el.value != null && String(el.value).trim() !== "";
@@ -113,7 +111,6 @@ function prefillForRecipient(elements = [], recipient = {}) {
     if (el.type === "email" && rEmail) return { ...el, value: recipient.email };
     if (el.type === "phone" && rPhone) return { ...el, value: rPhone };
     if (el.type === "date") return { ...el, value: today };
-
     return el;
   });
 }
@@ -124,28 +121,36 @@ const SignDocumentPage = () => {
   const { documentId } = useParams();
   const location = useLocation();
 
+  // data
   const [documentData, setDocumentData] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [currentProfile, setCurrentProfile] = useState("");
+  const [currentProfile, setCurrentProfile] = useState(null);
+  const [preference, setPreference] = useState({});
+  const [currentUser, setCurrentUser] = useState(null);
+
+  // ui state
   const [file, setFile] = useState(null);
+  const [numPages, setNumPages] = useState(1);
   const [pageNumber, setPageNumber] = useState(1);
+  const [pageHeight, setPageHeight] = useState(null); // measured after render
+
   const [signatureElements, setSignatureElements] = useState([]);
   const [activeElement, setActiveElement] = useState(null);
   const [inputValue, setInputValue] = useState("");
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [canvasContext, setCanvasContext] = useState(null);
   const [signatureType, setSignatureType] = useState();
-  const [preference, setPreference] = useState({});
-  const [numPages, setNumPages] = useState(1);
+  const [loading, setLoading] = useState(false);
 
-  const [currentUser, setCurrentUser] = useState("");
   const [loadingError, setLoadingError] = useState(null);
   const [pdfLoadError, setPdfLoadError] = useState(null);
   const [pdfLoading, setPdfLoading] = useState(false);
 
+  // drawing
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [canvasContext, setCanvasContext] = useState(null);
   const canvasRef = useRef(null);
-  const containerRef = useRef(null);
+
+  // overlay container
+  const pageWrapRef = useRef(null);
 
   /* ---------------------------- Load document ---------------------------- */
   useEffect(() => {
@@ -154,9 +159,9 @@ const SignDocumentPage = () => {
         const params = new URLSearchParams(location.search);
         const queryEmail = (params.get("email") || "").trim();
 
-        // 1) ensure token matches the link’s email
+        // Ensure a token exists for the invite email
         let token = localStorage.getItem("token");
-        let me = null;
+        let me;
 
         if (token) {
           const res = await axios.get(`${BASE_URL}/getUser`, {
@@ -183,7 +188,7 @@ const SignDocumentPage = () => {
         setPreference(me.preference);
         setCurrentProfile(me.profile);
 
-        // 2) fetch doc + sanitize + per‑recipient prefill
+        // Fetch document and prepare elements for this recipient
         const docRes = await axios.get(`${BASE_URL}/getSpecificDoc/${documentId}`);
         const doc = docRes.data.doc || {};
         setDocumentData(doc);
@@ -243,6 +248,19 @@ const SignDocumentPage = () => {
     }
   };
 
+  // Measure page height when a page renders so the overlay matches exactly
+  const handlePageRenderSuccess = (page) => {
+    try {
+      const scale = VIRTUAL_WIDTH / page.view[2]; // page.view: [x1,y1,x2,y2]
+      const vp = page.getViewport({ scale });
+      setPageHeight(vp.height);
+    } catch {
+      // fallback: read the canvas height
+      const canvas = pageWrapRef.current?.querySelector(".react-pdf__Page__canvas");
+      if (canvas) setPageHeight(canvas.height || canvas.offsetHeight || null);
+    }
+  };
+
   /* ------------------------------ Utilities ------------------------------- */
   const validateAndFixPDFUrl = (url) => {
     if (!url) return null;
@@ -251,7 +269,7 @@ const SignDocumentPage = () => {
     return url;
   };
 
-  // drawing state
+  // drawing helpers
   const lastPointRef = useRef(null);
   const lastTimeRef = useRef(0);
   const lineWidthRef = useRef(MAX_WIDTH);
@@ -307,10 +325,16 @@ const SignDocumentPage = () => {
     setIsDrawing(false);
     lastPointRef.current = null;
   };
+  const handleClearCanvas = () => {
+    if (!canvasRef.current || !canvasContext) return;
+    canvasContext.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+  };
 
   /* ------------------------------ UI actions ------------------------------ */
   const handleElementClick = (element) => {
-    if ((element?.recipientEmail || "").toLowerCase() !== (currentUser?.email || "").toLowerCase()) {
+    if (
+      (element?.recipientEmail || "").toLowerCase() !== (currentUser?.email || "").toLowerCase()
+    ) {
       toast.error(
         `Your current email is ${currentUser?.email || "unknown"}; this field is for ${element.recipientEmail}`,
         { containerId: "signaturesign" }
@@ -351,13 +375,20 @@ const SignDocumentPage = () => {
     return canvas.toDataURL();
   };
 
-  // Keep the signature **box size fixed** to avoid shifting; only image scales
+  // Keep the signature BOX size fixed; only the image scales inside it
   const commitSignatureValue = (elementId, dataUrl) => {
     setSignatureElements((prev) =>
       prev.map((el) => (el.id === elementId ? { ...el, value: dataUrl } : el))
     );
     setActiveElement(null);
     setInputValue("");
+  };
+
+  const handleImageUpload = (e) => {
+    if (!activeElement || !e.target.files[0]) return;
+    const reader = new FileReader();
+    reader.onload = (event) => commitSignatureValue(activeElement.id, event.target.result);
+    reader.readAsDataURL(e.target.files[0]);
   };
 
   const handleSave = () => {
@@ -407,24 +438,13 @@ const SignDocumentPage = () => {
     setInputValue("");
   };
 
-  const handleImageUpload = (e) => {
-    if (!activeElement || !e.target.files[0]) return;
-    const reader = new FileReader();
-    reader.onload = (event) => commitSignatureValue(activeElement.id, event.target.result);
-    reader.readAsDataURL(e.target.files[0]);
-  };
-
-  const handleClearCanvas = () => {
-    if (!canvasRef.current || !canvasContext) return;
-    canvasContext.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-  };
-
+  /* --------------------------- Save / decline flow -------------------------- */
   const handleSaveDocument = async () => {
     try {
       const token = localStorage.getItem("token");
       setLoading(true);
 
-      // ensure current date for this signer is set
+      // Ensure this signer’s date(s) are set to today if empty
       const today = new Date().toLocaleDateString();
       const ensured = signatureElements.map((el) => {
         const mine =
@@ -435,12 +455,14 @@ const SignDocumentPage = () => {
         return el;
       });
 
+      // Render to PDF on backend (image containment, text clamp) and get back bytes
       const embedResponse = await axios.post(
         `${BASE_URL}/embedElementsInPDF`,
         { documentId, elements: ensured },
         { headers: { authorization: `Bearer ${token}` }, responseType: "blob" }
       );
 
+      // Replace the document file with the signed version
       const blob = new Blob([embedResponse.data], { type: "application/pdf" });
       const signedFile = new File([blob], `signedDocument-${documentId}.pdf`, {
         type: "application/pdf",
@@ -454,6 +476,7 @@ const SignDocumentPage = () => {
         headers: { authorization: `Bearer ${token}` },
       });
 
+      // Mark this signer as signed
       await axios.patch(
         `${BASE_URL}/signDocument`,
         { documentId, email: currentUser.email },
@@ -487,9 +510,31 @@ const SignDocumentPage = () => {
     }
   };
 
-  /* ----------------------------- Field preview ---------------------------- */
+  /* ----------------------------- Field preview ----------------------------- */
   const renderFieldPreview = (element) => {
-    const typeStyles = {
+    // Default sizes if not present (match builder defaults)
+    const width =
+      element.width ??
+      (element.type === "signature" ? SIG_W : element.type === "date" ? DATE_W : TXT_W);
+    const height =
+      element.height ??
+      (element.type === "signature" ? SIG_H : element.type === "date" ? DATE_H : TXT_H);
+
+    const isMine =
+      (element.recipientEmail || "").toLowerCase() === (currentUser?.email || "").toLowerCase();
+
+    const commonStyle = {
+      position: "absolute",
+      left: `${element.x}px`,
+      top: `${element.y}px`,
+      width: `${width}px`,
+      height: `${height}px`,
+      overflow: "hidden",
+      // keep the field from influencing layout in any way
+      transform: "translateZ(0)",
+    };
+
+    const palette = {
       signature: "border-blue-500 bg-blue-50",
       date: "border-purple-500 bg-purple-50",
       text: "border-gray-500 bg-gray-50",
@@ -505,58 +550,50 @@ const SignDocumentPage = () => {
       phone: "border-gray-500 bg-gray-50",
     };
 
-    const width =
-      element.type === "signature"
-        ? element.width || SIG_W
-        : element.width || (element.type === "date" ? DATE_W : TXT_W);
-    const height =
-      element.type === "signature"
-        ? element.height || SIG_H
-        : element.height || (element.type === "date" ? DATE_H : TXT_H);
-
     return (
       <div
         key={element.id}
-        className={`border-2 p-2 cursor-pointer overflow-hidden flex flex-col ${typeStyles[element.type]}`}
-        onClick={() => handleElementClick(element)}
-        style={{
-          left: `${element.x}px`,
-          top: `${element.y}px`,
-          position: "absolute",
-          width: `${width}px`,
-          minHeight: `${height}px`,
-        }}
+        className={`border-2 rounded-sm p-1 ${
+          palette[element.type]
+        } ${isMine ? "cursor-pointer" : "cursor-not-allowed opacity-70"}`}
+        style={commonStyle}
+        onClick={() => isMine && handleElementClick(element)}
       >
-        <div className="flex-1">
+        <div className="w-full h-full">
           {element.value ? (
-            element.type === "signature" || element.type === "image" || element.type === "stamp" ? (
+            element.type === "signature" ||
+            element.type === "image" ||
+            element.type === "stamp" ? (
               <img
                 src={element.value}
                 alt={element.type}
-                className="w-full h-full object-contain" // image scales; box stays put
+                className="w-full h-full object-contain select-none"
+                draggable={false}
               />
             ) : element.type === "checkbox" ? (
-              <div className="flex items-center gap-2">
+              <div className="w-full h-full flex items-center justify-center">
                 <input type="checkbox" checked={!!element.value} readOnly className="w-4 h-4" />
               </div>
             ) : element.type === "initials" ? (
-              <div className="text-2xl font-bold text-center">{element.value}</div>
+              <div className="w-full h-full flex items-center justify-center font-bold text-xl">
+                {element.value}
+              </div>
             ) : (
-              <span className="text-sm block break-words">{element.value}</span>
+              <div className="w-full h-full text-sm break-words flex items-center px-1">
+                {element.value}
+              </div>
             )
           ) : (
-            <span className="text-gray-500 text-sm block break-words">
+            <div className="w-full h-full text-gray-500 text-xs flex items-center justify-center select-none">
               {element.type === "signature" ? (
-                <>
-                  <span className="block text-center font-semibold">Sign</span>
-                  <span className="block text-center" aria-hidden="true">
-                    🖊️
-                  </span>
-                </>
+                <div className="text-center">
+                  <div className="font-semibold leading-tight">Sign</div>
+                  <div aria-hidden="true">🖊️</div>
+                </div>
               ) : (
                 CONTACT_LABEL[element.type] || element.label || element.type
               )}
-            </span>
+            </div>
           )}
         </div>
       </div>
@@ -564,7 +601,7 @@ const SignDocumentPage = () => {
   };
 
   /* --------------------------- PDF rendering UI --------------------------- */
-  const renderPDFDocument = () => {
+  const renderPDFWithOverlay = () => {
     const validatedUrl = validateAndFixPDFUrl(file);
 
     if (pdfLoadError) {
@@ -588,65 +625,77 @@ const SignDocumentPage = () => {
       );
     }
 
-    if (pdfLoading) {
-      return (
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-            <p>Loading PDF...</p>
-          </div>
-        </div>
-      );
-    }
-
     return (
-      <Document
-        file={validatedUrl}
-        onLoadSuccess={onDocumentLoadSuccess}
-        onLoadError={onDocumentLoadError}
-        loading={
-          <div className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-              <p>Loading PDF...</p>
-            </div>
-          </div>
-        }
+      <div
+        ref={pageWrapRef}
+        className="relative inline-block"
+        style={{ width: `${VIRTUAL_WIDTH}px` }}
       >
-        {numPages > 1 && (
-          <div className="flex items-center justify-center gap-4 mb-4 bg-white p-2 rounded shadow sticky top-0 z-40">
-            <button
-              onClick={() => setPageNumber((prev) => Math.max(prev - 1, 1))}
-              disabled={pageNumber <= 1}
-              className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
-            >
-              Previous
-            </button>
-            <span className="text-sm font-medium">
-              Page {pageNumber} of {numPages}
-            </span>
-            <button
-              onClick={() => setPageNumber((prev) => Math.min(prev + 1, numPages))}
-              disabled={pageNumber >= numPages}
-              className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
-            >
-              Next
-            </button>
-          </div>
-        )}
-
-        <Page
-          pageNumber={pageNumber}
-          width={800}
-          renderAnnotationLayer={false}
-          renderTextLayer={false}
+        <Document
+          file={validatedUrl}
+          onLoadSuccess={onDocumentLoadSuccess}
+          onLoadError={onDocumentLoadError}
           loading={
-            <div className="flex items-center justify-center h-96">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            <div className="flex items-center justify-center h-64">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                <p>Loading PDF...</p>
+              </div>
             </div>
           }
-        />
-      </Document>
+        >
+          {numPages > 1 && (
+            <div className="flex items-center justify-center gap-4 mb-4 bg-white p-2 rounded shadow sticky top-0 z-40">
+              <button
+                onClick={() => setPageNumber((prev) => Math.max(prev - 1, 1))}
+                disabled={pageNumber <= 1}
+                className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
+              >
+                Previous
+              </button>
+              <span className="text-sm font-medium">
+                Page {pageNumber} of {numPages}
+              </span>
+              <button
+                onClick={() => setPageNumber((prev) => Math.min(prev + 1, numPages))}
+                disabled={pageNumber >= numPages}
+                className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
+              >
+                Next
+              </button>
+            </div>
+          )}
+
+          <Page
+            pageNumber={pageNumber}
+            width={VIRTUAL_WIDTH}
+            renderAnnotationLayer={false}
+            renderTextLayer={false}
+            onRenderSuccess={handlePageRenderSuccess}
+            loading={
+              <div className="flex items-center justify-center h-96">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+              </div>
+            }
+          />
+        </Document>
+
+        {/* Absolute overlay anchored to page top-left */}
+        {pageHeight && (
+          <div
+            className="absolute left-0 top-0 z-20 pointer-events-none"
+            style={{ width: `${VIRTUAL_WIDTH}px`, height: `${pageHeight}px` }}
+          >
+            {signatureElements
+              .filter((e) => (e.pageNumber || 1) === pageNumber)
+              .map((el) => (
+                <div key={el.id} className="pointer-events-auto">
+                  {renderFieldPreview(el)}
+                </div>
+              ))}
+          </div>
+        )}
+      </div>
     );
   };
 
@@ -655,20 +704,20 @@ const SignDocumentPage = () => {
     <div>
       <ToastContainer containerId={"signaturesign"} />
       <div className="flex h-screen bg-gray-100">
-        <div className="flex-1 p-4 overflow-auto relative" ref={containerRef}>
+        <div className="flex-1 p-4 overflow-auto">
           <button
             onClick={declineSign}
-            className="absolute top-4 right-[20%] z-50 bg-[#29354a] text-white px-6 py-2 rounded-[20px] shadow-l"
+            className="fixed top-4 right-[20%] z-50 bg-[#29354a] text-white px-6 py-2 rounded-[20px] shadow-l"
           >
             Decline
           </button>
           <button
             onClick={handleSaveDocument}
-            className="absolute top-4 right-4 z-50 bg-[#002864] text-white px-6 py-2 rounded-[20px] shadow-l"
+            className="fixed top-4 right-4 z-50 bg-[#002864] text-white px-6 py-2 rounded-[20px] shadow-l"
             disabled={signatureElements.some(
               (el) =>
-                !el.value &&
-                (el.recipientEmail || "").toLowerCase() === (currentUser?.email || "").toLowerCase()
+                (el.recipientEmail || "").toLowerCase() === (currentUser?.email || "").toLowerCase() &&
+                !el.value
             )}
           >
             Complete Signing
@@ -677,31 +726,35 @@ const SignDocumentPage = () => {
           {loadingError ? (
             <div className="text-red-500 text-center mt-8">{loadingError}</div>
           ) : file ? (
-            file.includes(".pdf") ? (
-              <div className="relative">
-                {renderPDFDocument()}
-                {signatureElements
-                  .filter((element) => element.pageNumber === pageNumber || !element.pageNumber)
-                  .map(renderFieldPreview)}
-              </div>
-            ) : (
-              <div className="relative">
-                <img
-                  src={file}
-                  alt="Document"
-                  className="max-w-full h-auto"
-                  onError={(e) => {
-                    e.currentTarget.style.display = "none";
-                    const next = e.currentTarget.nextElementSibling;
-                    if (next) next.style.display = "block";
-                  }}
-                />
-                <div style={{ display: "none" }} className="text-red-500 text-center mt-8">
-                  Failed to load document image
+            file.toLowerCase().includes(".pdf") || file.startsWith("http")
+              ? renderPDFWithOverlay()
+              : (
+                <div className="relative inline-block" style={{ width: `${VIRTUAL_WIDTH}px` }}>
+                  <img
+                    src={file}
+                    alt="Document"
+                    className="w-[800px] h-auto block"
+                    onLoad={(e) => setPageHeight(e.currentTarget.height)}
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                    }}
+                  />
+                  {pageHeight && (
+                    <div
+                      className="absolute left-0 top-0 z-20 pointer-events-none"
+                      style={{ width: `${VIRTUAL_WIDTH}px`, height: `${pageHeight}px` }}
+                    >
+                      {signatureElements
+                        .filter((e) => (e.pageNumber || 1) === pageNumber)
+                        .map((el) => (
+                          <div key={el.id} className="pointer-events-auto">
+                            {renderFieldPreview(el)}
+                          </div>
+                        ))}
+                    </div>
+                  )}
                 </div>
-                {signatureElements.map(renderFieldPreview)}
-              </div>
-            )
+              )
           ) : (
             <div className="flex items-center justify-center h-full">
               <p>Loading document...</p>

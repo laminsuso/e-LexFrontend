@@ -1,13 +1,28 @@
 // src/requestsignature.js
-import React, { useState, useRef, useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { v4 as uuidv4 } from "uuid";
 import axios from "axios";
 import { BASE_URL } from "./baseUrl";
 import { ToastContainer, toast } from "react-toastify";
 
-pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+/* ------------------------ PDF worker with fallbacks ----------------------- */
+const WORKERS = [
+  `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`,
+  `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`,
+  `//cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`,
+];
+(function setWorker() {
+  let i = 0;
+  const tryNext = () => {
+    if (i < WORKERS.length) {
+      pdfjs.GlobalWorkerOptions.workerSrc = WORKERS[i++];
+    }
+  };
+  tryNext();
+})();
 
+/* ------------------------------ Builder model ----------------------------- */
 const FIELD_TYPES = {
   SIGNATURE: "signature",
   INITIALS: "initials",
@@ -22,14 +37,65 @@ const FIELD_TYPES = {
   PHONE: "phone",
 };
 
-const RequestSignaturesPage = () => {
-  // Step + file + PDF
-  const [step, setStep] = useState(1);
-  const [file, setFile] = useState(null);
-  const [pageNumber, setPageNumber] = useState(1);
-  const [numPages, setNumPages] = useState(null);
+const LABELS = {
+  signature: "Signature",
+  initials: "Initials",
+  name: "Name",
+  jobTitle: "Job Title",
+  company: "Company",
+  date: "Date",
+  text: "Text",
+  checkbox: "Checkbox",
+  image: "Image",
+  email: "Email",
+  phone: "Phone",
+};
 
-  // Recipients + elements
+/* Canvas the backend expects */
+const VIRTUAL_WIDTH = 800;
+
+/* Compact defaults for each field */
+const DEFAULT_SIZES = {
+  signature: { w: 160, h: 60 },
+  initials: { w: 90, h: 40 },
+  name: { w: 200, h: 40 },
+  jobTitle: { w: 200, h: 40 },
+  company: { w: 200, h: 40 },
+  date: { w: 120, h: 40 },
+  text: { w: 220, h: 40 },
+  email: { w: 220, h: 40 },
+  phone: { w: 180, h: 40 },
+  image: { w: 160, h: 120 },
+  checkbox: { w: 20, h: 20 },
+};
+
+/* Palette used for previews */
+const TYPE_CLASSES = {
+  signature: "border-blue-500 bg-blue-50",
+  initials: "border-green-500 bg-green-50",
+  date: "border-purple-500 bg-purple-50",
+  image: "border-indigo-500 bg-indigo-50",
+  checkbox: "border-orange-500 bg-orange-50",
+  text: "border-gray-500 bg-gray-50",
+  name: "border-green-500 bg-green-50",
+  email: "border-yellow-500 bg-yellow-50",
+  jobTitle: "border-pink-500 bg-pink-50",
+  company: "border-indigo-500 bg-indigo-50",
+  phone: "border-gray-500 bg-gray-50",
+};
+
+/* ======================================================================== */
+
+const RequestSignaturesPage = () => {
+  /* Step 1 (details) / Step 2 (place fields) */
+  const [step, setStep] = useState(1);
+
+  /* File & PDF state */
+  const [file, setFile] = useState(null);
+  const [numPages, setNumPages] = useState(1);
+  const [pageNumber, setPageNumber] = useState(1);
+
+  /* Recipients & form details */
   const [formData, setFormData] = useState({
     title: "",
     note: "",
@@ -38,79 +104,96 @@ const RequestSignaturesPage = () => {
   });
   const [selectedEmail, setSelectedEmail] = useState("");
   const [contactBook, setContactBook] = useState([]);
-  const [signatureElements, setSignatureElements] = useState([]);
 
-  // Dragging/positioning
-  const [draggedElement, setDraggedElement] = useState(null);
-  const [positionOffset, setPositionOffset] = useState({ x: 0, y: 0 });
+  /* Elements placed on the PDF (positions are RELATIVE to the page overlay) */
+  const [elements, setElements] = useState([]);
 
-  // Toolbox touch drag
-  const [touchDraggedElement, setTouchDraggedElement] = useState(null);
+  /* Drag/resize state */
+  const [dragId, setDragId] = useState(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [resizeState, setResizeState] = useState(null); // { id, startX, startY, startW, startH }
 
-  // Send flow
+  /* Sending flow */
   const [showSendPopup, setShowSendPopup] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isSocial, setIsSocial] = useState(false);
   const [shareId, setShareId] = useState("");
 
-  // Refs
+  /* Refs */
   const containerRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  /* ---------- Helpers ---------- */
+  /* The measured box of the current PDF page inside the scroll container */
+  const [pageBox, setPageBox] = useState({ left: 0, top: 0, width: VIRTUAL_WIDTH, height: 0 });
 
-  // **Important**: convert absolute positions to the 800px PDF canvas
-  const normalizeForPdf = (elements) => {
-    const container = containerRef.current;
-    if (!container || !elements?.length) return elements || [];
-
-    return elements.map((el) => {
-      const selector = `.react-pdf__Page[data-page-number="${el.pageNumber}"]`;
-      const pageEl =
-        container.querySelector(selector) ||
-        document.querySelector(selector) ||
-        container.querySelector(".react-pdf__Page") ||
-        document.querySelector(".react-pdf__Page");
-
-      let pageWidth = 800;
-      let offsetX = 0;
-      let offsetY = 0;
-
-      if (pageEl) {
-        const canvas = pageEl.querySelector("canvas");
-        pageWidth = (canvas && canvas.clientWidth) || pageEl.clientWidth || pageWidth;
-        const pageRect = pageEl.getBoundingClientRect();
-        const contRect = container.getBoundingClientRect();
-        offsetX = pageRect.left - contRect.left + container.scrollLeft;
-        offsetY = pageRect.top - contRect.top + container.scrollTop;
-      } else if (typeof window !== "undefined") {
-        pageWidth = Math.min(window.innerWidth - 32, 800);
+  /* ----------------------------- Data loading ----------------------------- */
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const headers = { headers: { authorization: `Bearer ${token}` } };
+        const res = await axios.get(`${BASE_URL}/fetchContactBooks`, headers);
+        setContactBook(res.data?.contactBooks || []);
+      } catch {
+        toast.error("Something went wrong, please try again", { containerId: "requestSignature" });
       }
+    })();
+  }, []);
 
-      const localX = (Number(el.x) || 0) - offsetX;
-      const localY = (Number(el.y) || 0) - offsetY;
-      const s = 800 / (pageWidth || 800);
-
-      return {
-        ...el,
-        x: Math.round(localX * s),
-        y: Math.round(localY * s),
-        ...(el.width != null ? { width: Math.round(Number(el.width) * s) } : {}),
-        ...(el.height != null ? { height: Math.round(Number(el.height) * s) } : {}),
-      };
-    });
-  };
-
+  /* --------------------------- File & PDF handling ------------------------ */
   const handleFileChange = (e) => {
     const selected = e.target.files[0];
-    if (selected && /\.pdf$/i.test(selected.name)) {
-      setFile(selected);
-      setPageNumber(1);
-    } else {
+    if (!selected) return;
+    if (!/\.pdf$/i.test(selected.name)) {
       toast.error("Please select a PDF file.", { containerId: "requestSignature" });
+      return;
     }
+    setFile(selected);
+    setPageNumber(1);
+    setTimeout(measurePage, 40);
   };
 
+  const onPdfLoad = ({ numPages }) => {
+    setNumPages(numPages);
+    setTimeout(measurePage, 40);
+  };
+
+  const measurePage = () => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const selector = `.react-pdf__Page[data-page-number="${pageNumber}"]`;
+    const pageEl = container.querySelector(selector) || document.querySelector(selector);
+    if (!pageEl) return;
+
+    const contRect = container.getBoundingClientRect();
+    const pageRect = pageEl.getBoundingClientRect();
+    const canvas = pageEl.querySelector("canvas");
+
+    const width = canvas?.clientWidth || pageRect.width || VIRTUAL_WIDTH;
+    const height = canvas?.clientHeight || pageRect.height || 0;
+    const left = pageRect.left - contRect.left + container.scrollLeft;
+    const top = pageRect.top - contRect.top + container.scrollTop;
+
+    setPageBox({ left, top, width, height });
+  };
+
+  useEffect(() => {
+    measurePage();
+  }, [pageNumber, numPages, file]);
+
+  useEffect(() => {
+    const onResize = () => measurePage();
+    const onScroll = () => measurePage();
+    window.addEventListener("resize", onResize);
+    containerRef.current?.addEventListener("scroll", onScroll);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      containerRef.current?.removeEventListener("scroll", onScroll);
+    };
+  }, [containerRef, pageNumber]);
+
+  /* ------------------------------- Step flow ------------------------------ */
   const handleFormSubmit = (e) => {
     e.preventDefault();
     if (!formData.title?.trim()) {
@@ -130,93 +213,10 @@ const RequestSignaturesPage = () => {
       return;
     }
     setStep(2);
+    setTimeout(measurePage, 50);
   };
 
-  const fetchContactBooks = async () => {
-    try {
-      const token = localStorage.getItem("token");
-      const headers = { headers: { authorization: `Bearer ${token}` } };
-      const res = await axios.get(`${BASE_URL}/fetchContactBooks`, headers);
-      setContactBook(res.data?.contactBooks || []);
-    } catch {
-      toast.error("Something went wrong, please try again", { containerId: "requestSignature" });
-    }
-  };
-  useEffect(() => {
-    fetchContactBooks();
-  }, []);
-
-  /* ---------- Toolbox (touch) ---------- */
-  const handleToolTouchStart = (type, email, options = {}) => (e) => {
-    e.preventDefault();
-    setTouchDraggedElement({ type, email, options });
-  };
-  const handleToolTouchMove = (e) => {
-    if (!touchDraggedElement) return;
-    e.preventDefault();
-  };
-  const handleToolTouchEnd = (e) => {
-    if (!touchDraggedElement) return;
-    e.preventDefault();
-
-    const touch = e.changedTouches[0];
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = touch.clientX - rect.left;
-    const y = touch.clientY - rect.top;
-
-    if (x >= 0 && x <= rect.width && y >= 0 && y <= rect.height) {
-      const { type, email, options } = touchDraggedElement;
-      createPlaceholder(type, email, x, y, options);
-    }
-    setTouchDraggedElement(null);
-  };
-
-  /* ---------- Placed elements: mouse/touch drag ---------- */
-  const handleElementTouchStart = (e, id) => {
-    e.preventDefault();
-    const touch = e.touches[0];
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = touch.clientX - rect.left;
-    const y = touch.clientY - rect.top;
-    const el = signatureElements.find((s) => s.id === id);
-    if (!el) return;
-    setPositionOffset({ x: x - el.x, y: y - el.y });
-    setDraggedElement(id);
-  };
-  const handleElementTouchMove = (e) => {
-    if (!draggedElement) return;
-    e.preventDefault();
-    const touch = e.touches[0];
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = touch.clientX - rect.left - positionOffset.x;
-    const y = touch.clientY - rect.top - positionOffset.y;
-    setSignatureElements((prev) =>
-      prev.map((el) => (el.id === draggedElement ? { ...el, x, y } : el))
-    );
-  };
-  const handleElementTouchEnd = () => setDraggedElement(null);
-
-  const handleMouseDown = (e, id) => {
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const el = signatureElements.find((s) => s.id === id);
-    if (!el) return;
-    setPositionOffset({ x: x - el.x, y: y - el.y });
-    setDraggedElement(id);
-  };
-  const handleMouseMove = (e) => {
-    if (!draggedElement) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left - positionOffset.x;
-    const y = e.clientY - rect.top - positionOffset.y;
-    setSignatureElements((prev) =>
-      prev.map((el) => (el.id === draggedElement ? { ...el, x, y } : el))
-    );
-  };
-  const handleMouseUp = () => setDraggedElement(null);
-
-  /* ---------- Recipients ---------- */
+  /* ------------------------------- Recipients ----------------------------- */
   const handleChangeSign = (recipient, value) => {
     setFormData((prev) => ({
       ...prev,
@@ -243,12 +243,8 @@ const RequestSignaturesPage = () => {
   };
 
   const addManualRecipient = () => {
-    const {
-      newRecipientEmail,
-      newRecipientName,
-      newRecipientPhone,
-      newRecipientAddress,
-    } = formData;
+    const { newRecipientEmail, newRecipientName, newRecipientPhone, newRecipientAddress } =
+      formData;
 
     if (!newRecipientName) {
       toast.error("Please enter signer name", { containerId: "requestSignature" });
@@ -262,7 +258,6 @@ const RequestSignaturesPage = () => {
       toast.error("Please enter signer phone number", { containerId: "requestSignature" });
       return;
     }
-
     const phoneRegex = /^(?:\+?[1-9]\d{9,14}|0\d{9,14})$/;
     if (!phoneRegex.test(newRecipientPhone)) {
       toast.error("Please enter a valid phone number", { containerId: "requestSignature" });
@@ -295,81 +290,210 @@ const RequestSignaturesPage = () => {
     }));
   };
 
-  /* ---------- Elements ---------- */
-  const createPlaceholder = (type, email, x = 50, y = 50, options = {}) => {
-    const rec = (formData.recipients || []).find((r) => r.email === email) || {};
-    let prefill = "";
-    if (type === FIELD_TYPES.NAME && rec.name) prefill = rec.name;
-    if (type === FIELD_TYPES.EMAIL && email) prefill = email;
-    if (type === FIELD_TYPES.PHONE && rec.phone) prefill = rec.phone;
-    const newElement = {
-      id: uuidv4(),
-      type,
-      x,
-      y,
-      pageNumber,
-      recipientEmail: email,
-      placeholderText:
-        type === FIELD_TYPES.SIGNATURE
-          ? "Sign"
-          : type === FIELD_TYPES.NAME
-          ? "Name"
-          : type === FIELD_TYPES.EMAIL
-          ? "Email"
-          : type === FIELD_TYPES.PHONE
-          ? "Phone"
-          : type === FIELD_TYPES.DATE
-          ? "date"
-          : type === FIELD_TYPES.JOB_TITLE
-          ? "Job Title"
-          : type === FIELD_TYPES.COMPANY
-          ? "Company"
-          : type === FIELD_TYPES.CHECKBOX
-          ? "Checkbox"
-          : type === FIELD_TYPES.IMAGE
-          ? "Image"
-          : "Text",
-      isPlaceholder: true,
-      ...options,
-      value: prefill,
-    };
-    setSignatureElements((prev) => [...prev, newElement]);
-  };
-
-  const deleteElement = (id) => {
-    setSignatureElements((prev) => prev.filter((el) => el.id !== id));
-  };
-
-  /* ---------- Toolbox drag & drop ---------- */
-  const handleToolDragStart = (type, email, options = {}) => (e) => {
+  /* -------------------------- Toolbox & placement ------------------------- */
+  const toolDragStart = (type, email, options = {}) => (e) => {
     e.dataTransfer.setData("type", type);
     e.dataTransfer.setData("email", email);
     e.dataTransfer.setData("options", JSON.stringify(options));
   };
 
+  const toolTouchStart = (type, email, options = {}) => (e) => {
+    e.preventDefault();
+    e.currentTarget.dataset.drag = JSON.stringify({ type, email, options });
+  };
+  const toolTouchEnd = (e) => {
+    const data = e.currentTarget.dataset.drag;
+    if (!data) return;
+    const { type, email, options } = JSON.parse(data);
+    const touch = e.changedTouches[0];
+    const contRect = containerRef.current.getBoundingClientRect();
+    const absX = touch.clientX - contRect.left + containerRef.current.scrollLeft;
+    const absY = touch.clientY - contRect.top + containerRef.current.scrollTop;
+    placeNewElement(type, email, absX, absY, options);
+  };
+
   const handleDocumentDrop = (e) => {
     e.preventDefault();
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const contRect = containerRef.current.getBoundingClientRect();
+    const absX = e.clientX - contRect.left + containerRef.current.scrollLeft;
+    const absY = e.clientY - contRect.top + containerRef.current.scrollTop;
 
     const type = e.dataTransfer.getData("type");
     const email = e.dataTransfer.getData("email");
     const options = JSON.parse(e.dataTransfer.getData("options") || "{}");
 
-    if (type && email) {
-      createPlaceholder(type, email, x, y, options);
-    }
+    placeNewElement(type, email, absX, absY, options);
   };
 
-  /* ---------- Send flow ---------- */
+  const placeNewElement = (type, email, absX, absY, options = {}) => {
+    if (!type || !email) return;
+    // Must be dropped INSIDE the current page box
+    if (
+      absX < pageBox.left ||
+      absY < pageBox.top ||
+      absX > pageBox.left + pageBox.width ||
+      absY > pageBox.top + pageBox.height
+    ) {
+      return;
+    }
+
+    const { w, h } = DEFAULT_SIZES[type] || { w: 200, h: 40 };
+    // Convert to coordinates relative to the page overlay
+    let x = absX - pageBox.left;
+    let y = absY - pageBox.top;
+
+    // Clamp inside page
+    x = Math.max(0, Math.min(x, pageBox.width - w));
+    y = Math.max(0, Math.min(y, pageBox.height - h));
+
+    const rec = (formData.recipients || []).find((r) => r.email === email) || {};
+    const prefill =
+      type === FIELD_TYPES.NAME && rec.name
+        ? rec.name
+        : type === FIELD_TYPES.EMAIL
+        ? email
+        : type === FIELD_TYPES.PHONE && rec.phone
+        ? rec.phone
+        : "";
+
+    const newEl = {
+      id: uuidv4(),
+      type,
+      pageNumber,
+      x,
+      y,
+      width: options.width || w,
+      height: options.height || h,
+      recipientEmail: email,
+      label: LABELS[type] || type,
+      value: prefill,
+      // mark as overlay-relative for normalization
+      relativeToPage: true,
+    };
+    setElements((prev) => [...prev, newEl]);
+  };
+
+  const deleteElement = (id) => setElements((prev) => prev.filter((el) => el.id !== id));
+
+  /* -------------------------- Dragging & resizing ------------------------- */
+  const startDrag = (e, id) => {
+    e.preventDefault();
+    const el = elements.find((s) => s.id === id);
+    if (!el) return;
+
+    const abs = eventToAbs(e);
+    setDragOffset({ x: abs.x - (pageBox.left + el.x), y: abs.y - (pageBox.top + el.y) });
+    setDragId(id);
+  };
+
+  const onMouseMove = (e) => {
+    // resize?
+    if (resizeState) {
+      e.preventDefault();
+      const abs = eventToAbs(e);
+      const el = elements.find((s) => s.id === resizeState.id);
+      if (!el) return;
+
+      let w = Math.max(20, resizeState.startW + (abs.x - resizeState.startX));
+      let h = Math.max(20, resizeState.startH + (abs.y - resizeState.startY));
+      // clamp within page
+      w = Math.min(w, pageBox.width - el.x);
+      h = Math.min(h, pageBox.height - el.y);
+
+      setElements((prev) =>
+        prev.map((s) => (s.id === resizeState.id ? { ...s, width: w, height: h } : s))
+      );
+      return;
+    }
+
+    // dragging?
+    if (!dragId) return;
+    const el = elements.find((s) => s.id === dragId);
+    if (!el) return;
+    const abs = eventToAbs(e);
+    let x = abs.x - pageBox.left - dragOffset.x;
+    let y = abs.y - pageBox.top - dragOffset.y;
+
+    // clamp
+    x = Math.max(0, Math.min(x, pageBox.width - el.width));
+    y = Math.max(0, Math.min(y, pageBox.height - el.height));
+
+    setElements((prev) => prev.map((s) => (s.id === dragId ? { ...s, x, y } : s)));
+  };
+
+  const endDragOrResize = () => {
+    setDragId(null);
+    setResizeState(null);
+  };
+
+  const startResize = (e, id) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const el = elements.find((s) => s.id === id);
+    if (!el) return;
+    const abs = eventToAbs(e);
+    setResizeState({
+      id,
+      startX: abs.x,
+      startY: abs.y,
+      startW: el.width,
+      startH: el.height,
+    });
+  };
+
+  const eventToAbs = (e) => {
+    const isTouch = !!e.touches?.length || !!e.changedTouches?.length;
+    const point = isTouch ? (e.touches?.[0] || e.changedTouches?.[0]) : e;
+    const contRect = containerRef.current.getBoundingClientRect();
+    const x = point.clientX - contRect.left + containerRef.current.scrollLeft;
+    const y = point.clientY - contRect.top + containerRef.current.scrollTop;
+    return { x, y };
+  };
+
+  useEffect(() => {
+    const mm = (e) => onMouseMove(e);
+    const mu = () => endDragOrResize();
+    window.addEventListener("mousemove", mm);
+    window.addEventListener("mouseup", mu);
+    window.addEventListener("touchmove", mm, { passive: false });
+    window.addEventListener("touchend", mu);
+    return () => {
+      window.removeEventListener("mousemove", mm);
+      window.removeEventListener("mouseup", mu);
+      window.removeEventListener("touchmove", mm);
+      window.removeEventListener("touchend", mu);
+    };
+  }, [dragId, resizeState, pageBox, elements, dragOffset]);
+
+  /* ------------------------------- Normalize ------------------------------ */
+  // Convert page-relative positions to backend's 800px coordinate space
+  const normalizeForPdf = (els) => {
+    return (els || []).map((el) => {
+      const selector = `.react-pdf__Page[data-page-number="${el.pageNumber || 1}"]`;
+      const pageEl =
+        containerRef.current?.querySelector(selector) || document.querySelector(selector);
+      const canvas = pageEl?.querySelector("canvas");
+      const pageWidth = canvas?.clientWidth || pageBox.width || VIRTUAL_WIDTH;
+
+      const s = VIRTUAL_WIDTH / (pageWidth || VIRTUAL_WIDTH);
+      return {
+        ...el,
+        x: Math.round((el.relativeToPage ? el.x : el.x) * s),
+        y: Math.round((el.relativeToPage ? el.y : el.y) * s),
+        width:
+          el.width != null ? Math.round((el.relativeToPage ? el.width : el.width) * s) : undefined,
+        height:
+          el.height != null ? Math.round((el.relativeToPage ? el.height : el.height) * s) : undefined,
+      };
+    });
+  };
+
+  /* ------------------------------- Sending -------------------------------- */
   const handleSendRequest = () => {
     const required = formData.recipients.filter((u) => u.willSign === true);
-    const ok = required.every((r) =>
-      signatureElements.some((el) => el.recipientEmail === r.email)
-    );
+    const ok = required.every((r) => elements.some((el) => el.recipientEmail === r.email));
     if (!ok) {
-      toast.error("At least one element should be created for each signer", {
+      toast.error("At least one field must be placed for each signer", {
         containerId: "requestSignature",
       });
       return;
@@ -388,8 +512,9 @@ const RequestSignaturesPage = () => {
       const form = new FormData();
       form.append("document", file);
       form.append("title", formData.title);
+      form.append("folder", formData.folder);
 
-      const elementsToSave = normalizeForPdf(signatureElements);
+      const elementsToSave = normalizeForPdf(elements);
       form.append("elements", JSON.stringify(elementsToSave));
 
       if (!shareId) {
@@ -410,7 +535,7 @@ const RequestSignaturesPage = () => {
       toast.success("Signature request sent", { containerId: "requestSignature" });
       setFile(null);
       setFormData({ title: "", note: "", folder: "default", recipients: [] });
-      setSignatureElements([]);
+      setElements([]);
       setLoading(false);
       window.location.reload();
     } catch (e) {
@@ -435,17 +560,18 @@ const RequestSignaturesPage = () => {
         const form = new FormData();
         form.append("document", file);
         form.append("title", formData.title);
+        form.append("folder", formData.folder);
 
-        const elementsToSave = normalizeForPdf(signatureElements);
+        const elementsToSave = normalizeForPdf(elements);
         form.append("elements", JSON.stringify(elementsToSave));
 
-        let signers = signatureElements
+        const signers = elements
           .map((v) => ({ email: v.recipientEmail }))
           .filter((v, i, self) => i === self.findIndex((t) => t.email === v.email));
         form.append("signers", JSON.stringify(signers));
 
-        const saveResponse = await axios.post(`${BASE_URL}/saveDocument`, form, headers);
-        documentId = saveResponse.data.doc._id;
+        const save = await axios.post(`${BASE_URL}/saveDocument`, form, headers);
+        documentId = save.data.doc._id;
         setShareId(documentId);
       }
 
@@ -484,17 +610,18 @@ const RequestSignaturesPage = () => {
         const form = new FormData();
         form.append("document", file);
         form.append("title", formData.title);
+        form.append("folder", formData.folder);
 
-        const elementsToSave = normalizeForPdf(signatureElements);
+        const elementsToSave = normalizeForPdf(elements);
         form.append("elements", JSON.stringify(elementsToSave));
 
-        let signers = signatureElements
+        const signers = elements
           .map((v) => ({ email: v.recipientEmail }))
           .filter((v, i, self) => i === self.findIndex((t) => t.email === v.email));
         form.append("signers", JSON.stringify(signers));
 
-        const saveResponse = await axios.post(`${BASE_URL}/saveDocument`, form, headers);
-        documentId = saveResponse.data.doc._id;
+        const save = await axios.post(`${BASE_URL}/saveDocument`, form, headers);
+        documentId = save.data.doc._id;
         setShareId(documentId);
       }
 
@@ -512,94 +639,77 @@ const RequestSignaturesPage = () => {
     }
   };
 
-  /* ---------- Render helpers ---------- */
-  const renderFieldPreview = (element) => {
-    const baseClasses =
-      "border-2 border-dashed p-2 cursor-move min-w-[100px] min-h-[40px]";
-    const typeClasses = {
-      [FIELD_TYPES.SIGNATURE]: "border-blue-500 bg-blue-50",
-      [FIELD_TYPES.INITIALS]: "border-green-500 bg-green-50",
-      [FIELD_TYPES.DATE]: "border-purple-500 bg-purple-50",
-      [FIELD_TYPES.IMAGE]: "border-indigo-500 bg-indigo-50",
-      [FIELD_TYPES.CHECKBOX]: "border-orange-500 bg-orange-50",
-    };
+  /* ------------------------------ Rendering ------------------------------- */
+  const renderToolItem = (type, email) => (
+    <div
+      key={`${type}-${email}`}
+      className="p-2 bg-gray-100 hover:bg-gray-200 text-sm cursor-move rounded select-none"
+      draggable
+      onDragStart={toolDragStart(type, email)}
+      onTouchStart={toolTouchStart(type, email)}
+      onTouchEnd={toolTouchEnd}
+    >
+      {LABELS[type] || type}
+    </div>
+  );
 
-    const content = () => {
-      if (element.value) {
-        if (element.type === FIELD_TYPES.IMAGE) {
-          return (
-            <img
-              src={element.value}
-              alt="Uploaded"
-              className="w-full h-full object-contain"
-            />
-          );
-        }
-        return <div className="text-sm mt-1 break-words">{element.value}</div>;
-      }
-      if (element.type === FIELD_TYPES.CHECKBOX) {
-        return (
-          <div className="flex items-center gap-2">
-            <input type="checkbox" disabled className="w-4 h-4" />
-            <span className="text-xs text-gray-500">{element.placeholderText}</span>
-          </div>
-        );
-      }
-      if (element.type === FIELD_TYPES.SIGNATURE) {
-        return (
-          <div className="text-center leading-tight">
-            <div className="font-semibold">Sign</div>
-            <div aria-hidden="true">🖊️</div>
-          </div>
-        );
-      }
-      return <div className="text-xs text-gray-500">{element.placeholderText}</div>;
-    };
-
-    return (
-      <div className={`${baseClasses} ${typeClasses[element.type] || "border-gray-500 bg-gray-50"}`}>
-        {content()}
-      </div>
-    );
-  };
-
-  const renderToolItem = (type, email) => {
-    const labels = {
-      [FIELD_TYPES.SIGNATURE]: "Signature",
-      [FIELD_TYPES.INITIALS]: "Initials",
-      [FIELD_TYPES.NAME]: "Name",
-      [FIELD_TYPES.JOB_TITLE]: "Job Title",
-      [FIELD_TYPES.COMPANY]: "Company",
-      [FIELD_TYPES.DATE]: "Date",
-      [FIELD_TYPES.TEXT]: "Text",
-      [FIELD_TYPES.CHECKBOX]: "Checkbox",
-      [FIELD_TYPES.IMAGE]: "Image",
-      [FIELD_TYPES.EMAIL]: "Email",
-      [FIELD_TYPES.PHONE]: "Phone",
-    };
-
+  const renderFieldPreview = (el) => {
+    const classes = TYPE_CLASSES[el.type] || "border-gray-500 bg-gray-50";
     return (
       <div
-        key={`${type}-${email}`}
-        className="p-2 bg-gray-100 hover:bg-gray-200 text-sm cursor-move rounded"
-        draggable
-        onDragStart={handleToolDragStart(type, email)}
-        onTouchStart={handleToolTouchStart(type, email)}
-        onTouchMove={handleToolTouchMove}
-        onTouchEnd={handleToolTouchEnd}
+        className={`border-2 border-dashed ${classes} relative rounded-sm`}
+        style={{ width: el.width, height: el.height }}
       >
-        {labels[type]}
+        {/* Content */}
+        <div className="w-full h-full">
+          {el.value ? (
+            el.type === FIELD_TYPES.IMAGE ? (
+              <img src={el.value} alt="Uploaded" className="w-full h-full object-contain" />
+            ) : el.type === FIELD_TYPES.CHECKBOX ? (
+              <div className="flex items-center gap-2 p-1">
+                <input type="checkbox" disabled className="w-4 h-4" />
+                <span className="text-xs text-gray-600">{LABELS[el.type]}</span>
+              </div>
+            ) : (
+              <div className="text-xs p-1 leading-tight break-words">{el.value}</div>
+            )
+          ) : el.type === FIELD_TYPES.SIGNATURE ? (
+            <div className="w-full h-full flex flex-col items-center justify-center text-xs">
+              <div className="font-semibold">Sign</div>
+              <div aria-hidden="true">🖊️</div>
+            </div>
+          ) : (
+            <div className="text-xs text-gray-500 p-1">{LABELS[el.type]}</div>
+          )}
+        </div>
+
+        {/* Delete */}
+        <button
+          onClick={() => deleteElement(el.id)}
+          className="absolute -right-3 -top-3 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs shadow"
+          title="Remove"
+        >
+          ×
+        </button>
+
+        {/* Resize handle */}
+        <div
+          onMouseDown={(e) => startResize(e, el.id)}
+          onTouchStart={(e) => startResize(e, el.id)}
+          className="absolute w-3 h-3 bg-blue-600 right-0 bottom-0 translate-x-1/2 translate-y-1/2 rounded-sm cursor-se-resize"
+          title="Resize"
+        />
       </div>
     );
   };
 
-  /* ---------- Render ---------- */
   return (
     <>
       <ToastContainer containerId={"requestSignature"} />
 
       <div className="admin-content">
         {step === 1 ? (
+          /* -------------------------- Step 1: details ------------------------- */
           <div className="max-w-2xl mx-auto p-6 bg-white rounded-lg shadow-md">
             <h2 className="text-2xl font-bold mb-6">Request Signatures</h2>
             <form onSubmit={handleFormSubmit}>
@@ -758,34 +868,31 @@ const RequestSignaturesPage = () => {
               <button
                 type="submit"
                 className="mx-auto flex bg-[#002864] text-white py-2 px-4 rounded-[20px] w-fit"
-                disabled={formData.recipients.length === 0}
+                disabled={formData.recipients.length === 0 || !file}
               >
                 Prepare Document
               </button>
             </form>
           </div>
         ) : (
+          /* ----------------------- Step 2: place fields ----------------------- */
           <div className="flex min-h-screen lg:flex-row flex-col bg-gray-100">
+            {/* Left: PDF + overlay */}
             <div
               className="flex-1 p-2 lg:p-4 overflow-auto relative w-full"
               ref={containerRef}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
               onDrop={handleDocumentDrop}
               onDragOver={(e) => e.preventDefault()}
-              onTouchMove={handleElementTouchMove}
-              onTouchEnd={handleElementTouchEnd}
-              style={{ touchAction: "none" }}
             >
               <button
                 onClick={handleSendRequest}
                 className="absolute top-4 right-4 z-50 bg-[#002864] text-white px-6 py-2 rounded-[20px] shadow-lg"
-                disabled={signatureElements.length === 0}
+                disabled={elements.length === 0}
               >
                 Send Request
               </button>
 
-              {file?.type === "application/pdf" ? (
+              {file?.type === "application/pdf" && (
                 <div className="w-full">
                   {numPages > 1 && (
                     <div className="flex items-center justify-center gap-4 mb-4 bg-white p-2 rounded shadow sticky top-0 z-40">
@@ -811,60 +918,59 @@ const RequestSignaturesPage = () => {
 
                   <Document
                     file={file}
-                    onLoadSuccess={({ numPages }) => setNumPages(numPages)}
-                    onLoadError={() =>
-                      toast.error("Failed to load PDF", { containerId: "requestSignature" })
-                    }
+                    onLoadSuccess={onPdfLoad}
+                    onLoadError={() => toast.error("Failed to load PDF", { containerId: "requestSignature" })}
                     loading="Loading PDF..."
                     className="w-full"
                   >
                     <Page
                       pageNumber={pageNumber}
-                      width={
-                        typeof window !== "undefined"
-                          ? Math.min(window.innerWidth - 32, 800)
-                          : 800
-                      }
+                      width={VIRTUAL_WIDTH} // fixed to match backend coordinate space
                       className="w-full h-auto"
                       renderAnnotationLayer={false}
                       renderTextLayer={false}
+                      onRenderSuccess={measurePage}
                     />
                   </Document>
-                </div>
-              ) : null}
 
-              {signatureElements
-                .filter((el) => el.pageNumber === pageNumber)
-                .map((element) => (
+                  {/* Absolute overlay anchored to the current page box */}
                   <div
-                    key={element.id}
-                    className="absolute"
+                    className="absolute z-20"
                     style={{
-                      left: `${element.x}px`,
-                      top: `${element.y}px`,
-                      zIndex: draggedElement === element.id ? 1000 : 1,
+                      left: `${pageBox.left}px`,
+                      top: `${pageBox.top}px`,
+                      width: `${pageBox.width}px`,
+                      height: `${pageBox.height}px`,
+                      pointerEvents: "none", // we enable on children
                     }}
+                    onMouseMove={onMouseMove}
+                    onMouseUp={endDragOrResize}
+                    onTouchMove={onMouseMove}
+                    onTouchEnd={endDragOrResize}
                   >
-                    <div
-                      className="relative"
-                      onMouseDown={(e) => handleMouseDown(e, element.id)}
-                      onTouchStart={(e) => handleElementTouchStart(e, element.id)}
-                      onTouchMove={handleElementTouchMove}
-                      onTouchEnd={handleElementTouchEnd}
-                    >
-                      {renderFieldPreview(element)}
-                      <button
-                        onClick={() => deleteElement(element.id)}
-                        className="absolute -right-3 -top-3 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600"
-                      >
-                        ×
-                      </button>
-                    </div>
+                    {elements
+                      .filter((el) => el.pageNumber === pageNumber)
+                      .map((el) => (
+                        <div
+                          key={el.id}
+                          className="absolute pointer-events-auto select-none"
+                          style={{
+                            left: `${el.x}px`,
+                            top: `${el.y}px`,
+                            zIndex: dragId === el.id ? 1000 : 1,
+                          }}
+                          onMouseDown={(e) => startDrag(e, el.id)}
+                          onTouchStart={(e) => startDrag(e, el.id)}
+                        >
+                          {renderFieldPreview(el)}
+                        </div>
+                      ))}
                   </div>
-                ))}
+                </div>
+              )}
             </div>
 
-            {/* Right pane with its own scroll bar */}
+            {/* Right: toolbox */}
             <div className="lg:w-[320px] w-full bg-white p-4 shadow-lg overflow-y-auto sticky top-0 max-h-[calc(100vh-16px)]">
               <h3 className="text-xl font-bold mb-4">Field Types</h3>
 
@@ -876,7 +982,7 @@ const RequestSignaturesPage = () => {
                     <div key={recipient.email} className="mb-4 border-b pb-4 last:border-b-0">
                       <div className="font-medium mb-2 break-all">{recipient.email}</div>
                       <div className="grid grid-cols-2 gap-2">
-                        {Object.values(FIELD_TYPES).map((type) => renderToolItem(type, recipient.email))}
+                        {Object.values(FIELD_TYPES).map((t) => renderToolItem(t, recipient.email))}
                       </div>
                     </div>
                   ))}
