@@ -30,10 +30,11 @@ const tryNextWorker = setPDFWorker();
 const CONTACT_LABEL = { name: "Name", email: "Email", phone: "Phone" };
 
 const VIRTUAL_WIDTH = 800; // must match backend scale
+// Default box sizes (match backend DEFAULT_BOXES)
 const SIG_W = 160;
 const SIG_H = 60;
-const TXT_W = 200;
-const TXT_H = 40;
+const TXT_W = 200;  // <— change this to change Name width for the signer UI
+const TXT_H = 40;   // <— change this to change Name height for the signer UI
 const DATE_W = 120;
 const DATE_H = 40;
 
@@ -77,17 +78,31 @@ function resolveCurrentRecipient(signingData = {}) {
 }
 
 /* ---------------------- Elements cleanup + prefilling ---------------------- */
+// Ensure pageNumber + width/height exist so display == backend stamping
 function sanitizeIncomingElements(elements = []) {
   return elements.map((el) => {
     const type = el.type;
     const cleanLabel = type === "signature" ? "Sign" : CONTACT_LABEL[type] || el.type;
     const pageNumber = el.pageNumber || 1;
+
+    // Defaults aligned with backend
+    const defaults =
+      type === "signature" || type === "initials" || type === "stamp" || type === "image"
+        ? { width: SIG_W, height: SIG_H }
+        : type === "date"
+        ? { width: DATE_W, height: DATE_H }
+        : { width: TXT_W, height: TXT_H };
+
     return {
       ...el,
       id: el._id || Math.random().toString(36).slice(2),
       label: cleanLabel,
       value: el.value ?? null,
       pageNumber,
+      width: el.width ?? defaults.width,
+      height: el.height ?? defaults.height,
+      // conservative default font sizes; backend clamps to the box height
+      fontSize: el.fontSize ?? (type === "signature" ? 16 : 14),
     };
   });
 }
@@ -255,7 +270,6 @@ const SignDocumentPage = () => {
       const vp = page.getViewport({ scale });
       setPageHeight(vp.height);
     } catch {
-      // fallback: read the canvas height
       const canvas = pageWrapRef.current?.querySelector(".react-pdf__Page__canvas");
       if (canvas) setPageHeight(canvas.height || canvas.offsetHeight || null);
     }
@@ -439,6 +453,26 @@ const SignDocumentPage = () => {
   };
 
   /* --------------------------- Save / decline flow -------------------------- */
+  const normalizeForBackend = (elements) =>
+    elements.map((el) => ({
+      ...el,
+      // ensure the backend receives concrete width/height
+      width:
+        el.width ??
+        (el.type === "signature" || el.type === "initials" || el.type === "stamp" || el.type === "image"
+          ? SIG_W
+          : el.type === "date"
+          ? DATE_W
+          : TXT_W),
+      height:
+        el.height ??
+        (el.type === "signature" || el.type === "initials" || el.type === "stamp" || el.type === "image"
+          ? SIG_H
+          : el.type === "date"
+          ? DATE_H
+          : TXT_H),
+    }));
+
   const handleSaveDocument = async () => {
     try {
       const token = localStorage.getItem("token");
@@ -455,10 +489,13 @@ const SignDocumentPage = () => {
         return el;
       });
 
-      // Render to PDF on backend (image containment, text clamp) and get back bytes
+      // Make sure width/height are included when sending
+      const withDims = normalizeForBackend(ensured);
+
+      // Render to PDF on backend and get back bytes
       const embedResponse = await axios.post(
         `${BASE_URL}/embedElementsInPDF`,
-        { documentId, elements: ensured },
+        { documentId, elements: withDims },
         { headers: { authorization: `Bearer ${token}` }, responseType: "blob" }
       );
 
@@ -512,13 +549,8 @@ const SignDocumentPage = () => {
 
   /* ----------------------------- Field preview ----------------------------- */
   const renderFieldPreview = (element) => {
-    // Default sizes if not present (match builder defaults)
-    const width =
-      element.width ??
-      (element.type === "signature" ? SIG_W : element.type === "date" ? DATE_W : TXT_W);
-    const height =
-      element.height ??
-      (element.type === "signature" ? SIG_H : element.type === "date" ? DATE_H : TXT_H);
+    const width = element.width;
+    const height = element.height;
 
     const isMine =
       (element.recipientEmail || "").toLowerCase() === (currentUser?.email || "").toLowerCase();
@@ -530,7 +562,6 @@ const SignDocumentPage = () => {
       width: `${width}px`,
       height: `${height}px`,
       overflow: "hidden",
-      // keep the field from influencing layout in any way
       transform: "translateZ(0)",
     };
 
@@ -549,6 +580,9 @@ const SignDocumentPage = () => {
       stamp: "border-red-500 bg-red-50",
       phone: "border-gray-500 bg-gray-50",
     };
+
+    // Preview font that respects the box height (matches backend clamping)
+    const previewFontSize = Math.max(10, Math.min(14, height - 6));
 
     return (
       <div
@@ -575,19 +609,26 @@ const SignDocumentPage = () => {
                 <input type="checkbox" checked={!!element.value} readOnly className="w-4 h-4" />
               </div>
             ) : element.type === "initials" ? (
-              <div className="w-full h-full flex items-center justify-center font-bold text-xl">
+              <div
+                className="w-full h-full flex items-center justify-center font-bold"
+                style={{ fontSize: Math.max(12, Math.min(18, height - 6)) }}
+              >
                 {element.value}
               </div>
             ) : (
-              <div className="w-full h-full text-sm break-words flex items-center px-1">
+              <div
+                className="w-full h-full break-words flex items-center px-1"
+                style={{ fontSize: `${previewFontSize}px` }}
+              >
                 {element.value}
               </div>
             )
           ) : (
-            <div className="w-full h-full text-gray-500 text-xs flex items-center justify-center select-none">
+            <div className="w-full h-full text-gray-500 flex items-center justify-center select-none"
+                 style={{ fontSize: `${Math.max(10, Math.min(13, height - 8))}px` }}>
               {element.type === "signature" ? (
-                <div className="text-center">
-                  <div className="font-semibold leading-tight">Sign</div>
+                <div className="text-center leading-tight">
+                  <div className="font-semibold">Sign</div>
                   <div aria-hidden="true">🖊️</div>
                 </div>
               ) : (
@@ -771,25 +812,19 @@ const SignDocumentPage = () => {
                   <>
                     <div className="flex border-b mb-4">
                       <button
-                        className={`flex-1 py-2 ${
-                          signatureType === "draw" ? "border-b-2 border-blue-500" : ""
-                        }`}
+                        className={`flex-1 py-2 ${signatureType === "draw" ? "border-b-2 border-blue-500" : ""}`}
                         onClick={() => setSignatureType("draw")}
                       >
                         Draw
                       </button>
                       <button
-                        className={`flex-1 py-2 ${
-                          signatureType === "image" ? "border-b-2 border-blue-500" : ""
-                        }`}
+                        className={`flex-1 py-2 ${signatureType === "image" ? "border-b-2 border-blue-500" : ""}`}
                         onClick={() => setSignatureType("image")}
                       >
                         Upload
                       </button>
                       <button
-                        className={`flex-1 py-2 ${
-                          signatureType === "typed" ? "border-b-2 border-blue-500" : ""
-                        }`}
+                        className={`flex-1 py-2 ${signatureType === "typed" ? "border-b-2 border-blue-500" : ""}`}
                         onClick={() => setSignatureType("typed")}
                       >
                         Type
