@@ -31,7 +31,7 @@ const CONTACT_LABEL = { name: "Name", email: "Email", phone: "Phone" };
 
 const VIRTUAL_WIDTH = 800; // must match backend scale
 // Default box sizes (match backend DEFAULT_BOXES)
-const SIG_W = 160;
+const SIG_W = 140;
 const SIG_H = 60;
 const TXT_W = 150;  // <— change this to change Name width for the signer UI
 const TXT_H = 40;   // <— change this to change Name height for the signer UI
