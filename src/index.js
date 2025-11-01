@@ -40,7 +40,7 @@ import Subscription from "./subscription";
 import ChangePassword from "./changePassword";
 import UseTemplate from "./usetemplate";
 import PublicProfile from "./publicProfile";
-import Contact from "./Contact";
+import Contact from "./contact";
 import axios from "axios";
 const stripePromise = loadStripe(
   "pk_test_51OwuO4LcfLzcwwOYdssgGfUSfOgWT1LwO6ewi3CEPewY7WEL9ATqH6WJm3oAcLDA3IgUvVYLVEBMIEu0d8fUwhlw009JwzEYmV"
