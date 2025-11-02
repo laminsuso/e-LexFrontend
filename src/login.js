@@ -1,1127 +1,1094 @@
-// import { useState,useEffect } from "react";
+
+// // src/login.jsx
+// import React, { useMemo, useState, useEffect } from "react";
 // import axios from "axios";
-// import { ToastContainer, toast } from "react-toastify";
-// import img from "./images/loginimg.svg";
-// import { Link, useNavigate } from "react-router-dom";
 // import { BASE_URL } from "./baseUrl";
-// import { gapi } from 'gapi-script';
+// import { Link, useNavigate, useLocation } from "react-router-dom";
+
+// const REGION_KEY = "elex_region"; // 'global' | 'wa'
+// const REGISTER_ENDPOINT_PRIMARY = "/register";
+// const REGISTER_ENDPOINT_FALLBACK = "/registerAndLogin";
 
 // export default function Login() {
-//   const [region, setRegion] = useState("global");
-//   const [login, setLogin] = useState(true);
-//   const [showPassword, setShowPassword] = useState(false);
+//   const navigate = useNavigate();
+//   const location = useLocation();
+
+//   // deep-link: /join?mode=signup
+//   const initialMode = useMemo(() => {
+//     const m = new URLSearchParams(location.search).get("mode");
+//     return m === "signup" ? "signup" : "login";
+//   }, [location.search]);
+
+//   const [mode, setMode] = useState(initialMode); // 'login' | 'signup'
+//   const [region, setRegion] = useState(localStorage.getItem(REGION_KEY) || "global");
+
+//   // login fields
 //   const [email, setEmail] = useState("");
 //   const [password, setPassword] = useState("");
-//   const [loginEmailError, setLoginEmailError] = useState(false);
-//   const [loginPasswordError, setLoginPasswordError] = useState(false);
-//   const [showRegPassword, setShowRegPassword] = useState(false);
-//   const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-//   const validatePhone = (phone) => {
-    
-//     const phonePattern = /^(?:\+?\d{1,3}[-\s]?)?(\(?\d{2,4}\)?[-\s]?)?\d{7,10}$/;
-//     return phonePattern.test(phone);
+//   const [showPwd, setShowPwd] = useState(false);
+
+//   // signup fields
+//   const [fullName, setFullName] = useState("");
+//   const [newEmail, setNewEmail] = useState("");
+//   const [newPassword, setNewPassword] = useState("");
+//   const [confirmPassword, setConfirmPassword] = useState("");
+//   const [agree, setAgree] = useState(false);
+
+//   const [loading, setLoading] = useState(false);
+//   const [err, setErr] = useState("");
+
+//   useEffect(() => {
+//     localStorage.setItem(REGION_KEY, region);
+//   }, [region]);
+
+//   /* -----------------------------------------------------------------------
+//    * SOCIAL BUTTON SIZE / LOOK CONTROL
+//    * - Both Google and Microsoft share this exact class string.
+//    * - Width: `w-full` makes each button fill its grid cell.
+//    * - Height / padding: controlled by `py-2.5` and `h-[44px]`.
+//    * - Font size: inherit (you can add `text-sm` if you want smaller text).
+//    * - Icon size: see <img className="h-5 w-5" /> inside each button.
+//    * --------------------------------------------------------------------- */
+//   const socialBtnClass =
+//     "inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 " +
+//     "bg-white px-4 py-2.5 text-slate-700 hover:bg-slate-50 w-full h-[44px]";
+
+//   // Google OAuth (server-side redirect flow; matches routes/auth.js rewrite)
+//   const handleOAuthGoogle = () => {
+//     window.location.href = `${BASE_URL}/auth/google`; // change if your start path differs
 //   };
-//   const navigate = useNavigate();
-//   const checkLoginValidation = async () => {
-//     if (email.length === 0) {
-//       setLoginEmailError(true);
-//     } else if (email.length > 0) {
-//       setLoginEmailError(false);
-//     }
-//     if (password.length === 0) {
-//       setLoginPasswordError(true);
-//     } else if (password.length > 0) {
-//       setLoginPasswordError(false);
-//     }
+
+//   // Microsoft OAuth (same visual style, placeholder route)
+//   const handleOAuthMicrosoft = () => {
+//     window.location.href = `${BASE_URL}/auth/microsoft`; // update if you use a different route
+//   };
+
+//   const handleLogin = async (e) => {
+//     e.preventDefault();
+//     setErr("");
+//     setLoading(true);
 //     try {
-   
-//       let response = await axios.post(`${BASE_URL}/login`, { email, password });
-     
-//       toast.success("User logged in sucessfully", {
-//         containerId: "loginContainer",
-//       });
-//       localStorage.setItem("token", response.data.token);
-//       let token = localStorage.getItem("token");
-//       let headers = {
-//         headers: {
-//           authorization: `Bearer ${token}`,
-//         },
-//       };
+//       const { data } = await axios.post(`${BASE_URL}/login`, { email, password, region });
+//       if (data?.token) {
+//         localStorage.setItem("token", data.token);
+//         if (data.user) localStorage.setItem("user", JSON.stringify(data.user));
+//       }
 //       navigate("/admin");
 //     } catch (e) {
-      
-//       if (e?.response?.data?.error) {
-//         toast.error(e?.response?.data?.error, {
-//           containerId: "loginContainer",
+//       const msg =
+//         e?.response?.data?.error ||
+//         e?.response?.data?.message ||
+//         "Could not sign in. Please check your email and password.";
+//       setErr(msg);
+//     } finally {
+//       setLoading(false);
+//     }
+//   };
+
+//   const handleSignup = async (e) => {
+//     e.preventDefault();
+//     setErr("");
+
+//     if (!agree) {
+//       setErr("Please accept the Terms and Privacy Policy to continue.");
+//       return;
+//     }
+//     if (!newPassword || newPassword.length < 8) {
+//       setErr("Password must be at least 8 characters.");
+//       return;
+//     }
+//     if (newPassword !== confirmPassword) {
+//       setErr("Passwords do not match.");
+//       return;
+//     }
+
+//     setLoading(true);
+//     try {
+//       let data;
+//       try {
+//         const res = await axios.post(`${BASE_URL}${REGISTER_ENDPOINT_PRIMARY}`, {
+//           name: fullName,
+//           email: newEmail,
+//           password: newPassword,
+//           region,
 //         });
-//       } else {
-//         toast.error("Something went wrong please try again", {
-//           containerId: "loginContainer",
+//         data = res.data;
+//       } catch {
+//         const res = await axios.post(`${BASE_URL}${REGISTER_ENDPOINT_FALLBACK}`, {
+//           email: newEmail,
+//           name: fullName,
 //         });
+//         data = res.data;
 //       }
-//     }
-//   };
-//   const [formData, setFormData] = useState({
-//     email: "",
-//     password: "",
-//     name: "",
-//     phone: "",
-//     company: "",
-//     jobTitle: "",
-//     regPassword: "",
-//     agreeTerms: false,
-//   });
-//   const [errors, setErrors] = useState({
-//     email: false,
-//     password: false,
-//     name: false,
-//     phone: false,
-//     company: false,
-//     jobTitle: false,
-//     regPassword: false,
-//     agreeTerms: false,
-//   });
 
-//   const checkRegisterValidation = async() => {
-//     const newErrors = {
-//       name: formData.name === "",
-//       email: formData.email === "" || !validateEmail(formData.email),
-//       phone: formData.phone === "" || !validatePhone(formData.phone),
-//       company: formData.company === "",
-//       jobTitle: formData.jobTitle === "",
-//       regPassword: formData.regPassword === "",
-//       agreeTerms: !formData.agreeTerms,
-//     };
-//     setErrors(newErrors);
-//     if (Object.values(newErrors).some((v) => v)) {
-//       return !Object.values(newErrors).some((v) => v);
-//     }
-
-//     try{
-//       let data={
-//         ...formData,
-//         password:formData.regPassword,
-//         job_title:formData.jobTitle
+//       if (data?.token) {
+//         localStorage.setItem("token", data.token);
+//         if (data.user) localStorage.setItem("user", JSON.stringify(data.user));
 //       }
-// let response=await axios.post(`${BASE_URL}/register`,data)
-// toast.success(response.data.message,{containerId:"loginContainer"})
-// setFormData({
-//   email: "",
-//   password: "",
-//   name: "",
-//   phone: "",
-//   company: "",
-//   jobTitle: "",
-//   regPassword: "",
-//   agreeTerms: false,
-// })
-//    }catch(e){
-//     if(e?.response?.data?.error){
-//      toast.error(e?.response?.data?.error,{containerId:"loginContainer"}) 
-//     }else{
-//       toast.error("Something went wrong please try again",{containerId:"loginContainer"})
+//       navigate("/admin");
+//     } catch (e) {
+//       const msg =
+//         e?.response?.data?.error ||
+//         e?.response?.data?.message ||
+//         "Could not create account. Please try again.";
+//       setErr(msg);
+//     } finally {
+//       setLoading(false);
 //     }
-//    }
 //   };
 
-//   const handleInputChange = (e) => {
-//     const { name, value, type, checked } = e.target;
-//     setFormData((prev) => ({
-//       ...prev,
-//       [name]: type === "checkbox" ? checked : value,
-//     }));
-//   };
-//   useEffect(() => {
-//     const initGoogleAPI = () => {
-//       gapi.load('auth2', function () {
-//         gapi.auth2.init({
-//           client_id: '87856424688-nhil5aauafjgorqfrnt432sf2gg66a4k.apps.googleusercontent.com', 
-//         });
-//       });
-//     };
-//     initGoogleAPI();
-//   }, []);
-
-//   const loginWithGoogle=async()=>{
-// try{
-
-//   const auth2 = gapi.auth2.getAuthInstance();
-//   auth2.signIn().then(async(googleUser) => {
-//     const profile = googleUser.getBasicProfile();
-
-// console.log("PROFILE")
-// console.log(profile)  
-   
-   
-//     let response = await axios.post(`${BASE_URL}/googleLogin`,{email:profile.getEmail()});
-//     toast.success("User logged in sucessfully", {
-//       containerId: "loginContainer",
-//     });
-//     localStorage.setItem("token", response.data.token);
-//     let token = localStorage.getItem("token");
-//     let headers = {
-//       headers: {
-//         authorization: `Bearer ${token}`,
-//       },
-//     };
-//     navigate("/admin"); 
-  
-//   }).catch(error => {
-//     console.log("TRY CATCH ERROR")
-//    console.log(error)
-
-//   });
-
- 
-
-// }catch(e){
-//   console.log("ERROR OF GAPI")
-//   console.log(e.message)
-// if(e?.response?.data?.error){
-//   toast.error(e?.response?.data?.error,{containerId:"loginContainer"})
-// }else{
-//   toast.error("Something went wrong please try again",{containerId:"loginContainer"})
-// }
-// }
-//   }
 //   return (
-//     <>
-//       <ToastContainer containerId={"loginContainer"} />
-//       <div className="lg:px-[64px] lg:pt-[40px] px-[20px] py-[20px] lg:pb-[10px]  bg-[#e5e7eb]">
-//         <div className="p-[24px] bg-[#ffffff] rounded-[16px]">
-//           <a href="/" className="max-w-[250px] flex justify-center items-center gap-1">
+//     <div className="min-h-screen grid lg:grid-cols-2 bg-gradient-to-b from-white to-slate-50">
+//       {/* Left: form */}
+//       <div className="flex items-center justify-center px-6 py-10">
+//         <div className="w-full max-w-md">
+//           {/* Brand */}
+//           <div className="flex items-center gap-3 mb-6">
 //             <img
-             
-//               alt="logo"
-//               className="h-8" src="https://res.cloudinary.com/dbjwbveqn/image/upload/v1744296499/icononly_transparent_nobuffer_xmjeis.png"
+//               src="https://res.cloudinary.com/dbjwbveqn/image/upload/v1744296499/icononly_transparent_nobuffer_xmjeis.png"
+//               alt="E‑Lex Signature"
+//               className="h-9 w-9 -rotate-6"
 //             />
-//             E-Lex Signature
-//           </a>
-//           <div className="flex gap-[10px]">
-//             <div className="w-full flex  lg:w-1/2">
-//               {login ? (
-//                 <div className="flex flex-col w-full">
-//                   <h1 className="text-[30px] mt-[24px]">Welcome back!</h1>
-//                   <p className="mb-[10px] text-[12px] text-[#878787]">
-//                     Login to your account
-//                   </p>
-//                   <div className="shadow-lg bg-base-100 outline outline-1 w-fit mx-auto outline-slate-300/50 flex justify-center items-center rounded-full my-2">
-//                     <div
-//                       onClick={() => {
-//                         setRegion("global");
-//                       }}
-//                       className={`op-bg-secondary  ${
-//                         region == "global"
-//                           ? "bg-[#29354a] text-white "
-//                           : "bg-white text-black"
-//                       } rounded-full  capitalize px-10 py-2 my-2 first:ml-2 last:mr-2 cursor-pointer`}
-//                     >
-//                       Global
-//                     </div>
-//                     <div
-//                       onClick={() => {
-//                         setRegion("europe");
-//                       }}
-//                       className={`op-bg-secondary flex items-center gap-[10px]  ${
-//                         region == "europe"
-//                           ? "bg-[#29354a] text-white "
-//                           : "bg-white text-black"
-//                       } rounded-full  capitalize px-10 py-2 my-2 first:ml-2 last:mr-2 cursor-pointer`}
-//                     >
-//                         <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAsQAAALEBxi1JjQAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAP4SURBVEiJtZV9aFVlHMc/z7lv272bm3cv7u4t26ZFmwjJFuFqTSIVkoqQisJpZVD9EY1AkuoPB5UYwiCRiJyGppVYkURG3aWmZTpthDhsd5vb7nHz7r5t93rvds95nv7Ympu0l7J+f51zft+X3+/3POd54H8OMVMirHfdr+BpUMsFuIEBgTohTPZmlVR0/muDaF+fW2pj+xA8PAMnJVA7sjzlbwkhzH9kEO7uzsYhTwF3TXw6reCohgpKIcqEEutBlU3k9md7yjYIIdR8uyF0tetQWPepkO5LRPydT9ycV+qcLeTv3BHWfSqs+1RE73p+/uIDvmVh3SfDuk+Fr3ZunA0b1js/njDRlWq1zobV/noQUqwHhICO7ILyfbORpFRbAQl4IgPFtfMyAFUJoIT6fq655hQv6Qc6AJS0VM3TQLjHyxPB2QhTCgoACE3lzIayAhSuaK3t7R0sstuMWCBqqy6sbn1wLvne3kDhBL6moNpbOXB21cW/wwkAz4rWbgSLbVaBwy6IXZe4szSsFsG1kInDLsh3WxgYMkkZCk+elURSEhmR4yKKvXpb/aYZOwBYlGNh1xt5GKZi18Eoa2pd5GZbCEZMvvTG2PKcG6UULzUF2P1mHpERydHjcQ5/F5u108k1qFmWxufHYry4LUA8Mb7G23aHKPWM1+A9cx3vmQTL73AQGZFsbQ6y6p70uSZ5w8BqgbGUor7GSX2NcxJgTBwGj6xyseQ2GyfPJynItbCnKZ8PDw8DoJRhm9NgOC4pK7ERjJrYJgbncgpc6eOnyVfeOK9uHyI5KglFTfRrBslRiZIJjFTgbvNCxcuqvaJ4RoPjZxNYNFhX5+KjI8N09Y3x2saF7P40SnRE0T9oTJIuXBply84ga1ZqaMYVtjd87QHel5ITqq18xVSDabtI0yRS3vg1bn4XQqGURKaGybTrPL7yd15Y28bi/MhUTRM4MBY1fkx/oKdlkl3kDrH9mf2svPMSNqtJ/oIorz92hHXVZ0m3J1iQNsimui/YVPcZCxx93L5oiLcbfpgm3v6HhaY96RZpqA2puHwXpmzTbGeMp+47yULXMD9dLEKkhWmo99LRn8vR0xlgM9i8+jQAh45X0d5TgD+YSYYjhj+gkTLgvQPpNDfGGQ0ZaFbt28kR5VW2JDPSYo7yghAAv3UXIISiZqkf09Q411kIQM1SPwC/Xi4CoPHRn9m8+hSv7HQB0NwYJ0MajEZSym51ljjXXfaPG1R9clDJ2JMw/7sDIM1u0PrOXrKdEZRUOFMpjBETW6a1xfVQz7OTHdxKqLbyimTEPD8WNTKVApvT8otr7ZV7b1V3Wox6Sytj35T2x4+VfvCfCs8n/gTaZ7pyyNqI1wAAAABJRU5ErkJggg==" alt="gdpr" />
-//                     West Africa
-//                     </div>
-//                   </div>
+//             <span className="text-2xl font-bold text-slate-900">E‑Lex Signature</span>
+//           </div>
 
-//                   <div className="flex flex-col my-[4px] px-[24px] py-[16px] bg-white rounded-[16px] border border-[#cbd5e180] shadow-md login-form">
-//                     <div className="mb-4 w-full">
-//                       <label className="block text-sm font-medium text-gray-700 mb-1">
-//                         Email
-//                       </label>
-//                       <input
-//                         type="email"
-//                         value={email}
-//                         onChange={(e) => setEmail(e.target.value)}
-//                         className="w-full px-4 py-3 rounded-[16px] border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-//                         placeholder="Enter your email"
-//                       />
-//                       {loginEmailError ? (
-//                         <p className="text-[12px] text-red-600">
-//                           * Email is required
-//                         </p>
-//                       ) : (
-//                         ""
-//                       )}
-//                     </div>
-//                     <div className="mb-6 w-full relative">
-//                       <label className="block text-sm font-medium text-gray-700 mb-1">
-//                         Password
-//                       </label>
-//                       <div className="relative">
-//                         <input
-//                           type={showPassword ? "text" : "password"}
-//                           value={password}
-//                           onChange={(e) => setPassword(e.target.value)}
-//                           className="w-full px-4 py-3 rounded-[16px] border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 pr-12"
-//                           placeholder="Enter your password"
-//                         />
-//                         <button
-//                           type="button"
-//                           onClick={() => setShowPassword(!showPassword)}
-//                           className="absolute right-3 top-1/2 -translate-y-1/2"
-//                         >
-//                           {showPassword ? (
-//                             <svg
-//                               xmlns="http://www.w3.org/2000/svg"
-//                               className="h-5 w-5 text-gray-400"
-//                               fill="none"
-//                               viewBox="0 0 24 24"
-//                               stroke="currentColor"
-//                             >
-//                               <path
-//                                 strokeLinecap="round"
-//                                 strokeLinejoin="round"
-//                                 strokeWidth={2}
-//                                 d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
-//                               />
-//                             </svg>
-//                           ) : (
-//                             <svg
-//                               xmlns="http://www.w3.org/2000/svg"
-//                               className="h-5 w-5 text-gray-400"
-//                               fill="none"
-//                               viewBox="0 0 24 24"
-//                               stroke="currentColor"
-//                             >
-//                               <path
-//                                 strokeLinecap="round"
-//                                 strokeLinejoin="round"
-//                                 strokeWidth={2}
-//                                 d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-//                               />
-//                               <path
-//                                 strokeLinecap="round"
-//                                 strokeLinejoin="round"
-//                                 strokeWidth={2}
-//                                 d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-//                               />
-//                             </svg>
-//                           )}
-//                         </button>
-//                       </div>
-//                       {loginPasswordError ? (
-//                         <p className="text-[12px] text-red-600">
-//                           * Password is required
-//                         </p>
-//                       ) : (
-//                         ""
-//                       )}
-//                     </div>
-//                     <Link className="text-[12px] text-blue underline" to="/forgetpassword">Forget Password?</Link>
-//                   </div>
-//                   <div className="flex items-center gap-[20px] mt-[10px] flex-col lg:flex-row">
-//                     <button
-//                       onClick={checkLoginValidation}
-//                       className="flex justify-center bg-[#002864] text-white text-[14px] text-center w-1/2 px-[16px] py-[10px] rounded-[20px]"
-//                     >
-//                       Login
-//                     </button>
-//                     <button
-//                       className="flex justify-center bg-[#e10032] text-white text-[14px] text-center w-1/2 px-[16px] py-[10px] rounded-[20px]"
-//                       onClick={() => {
-//                         setLogin(false);
-//                       }}
-//                     >
-//                       Create Account
-//                     </button>
-//                   </div>
-//                   <div className="mt-6">
-//                     <div className="flex items-center my-6">
-//                       <div className="flex-grow border-t border-[#cbd5e180]"></div>
-//                       <span className="mx-4 text-sm text-gray-500">or</span>
-//                       <div className="flex-grow border-t border-[#cbd5e180]"></div>
-//                     </div>
-//                   </div>
-//                   <div className="flex flex-col gap-3 mt-[20px]">
-//                     <button onClick={loginWithGoogle} className="flex items-center justify-center gap-2 w-full bg-white text-gray-700 text-[14px] text-center px-[16px] py-[10px] rounded-[8px] border border-[#cbd5e180] hover:bg-gray-50 transition-colors">
-//                       <svg
-//                         xmlns="http://www.w3.org/2000/svg"
-//                         width="18"
-//                         height="18"
-//                         viewBox="0 0 18 18"
-//                       >
-//                         <path
-//                           fill="#4285F4"
-//                           d="M17.6 9.2c0-.6-.1-1.2-.2-1.8H9v3.4h4.8c-.1.9-.7 1.7-1.5 2.3v2h2.4c1.4-1.3 2.2-3.2 2.2-5.4z"
-//                         />
-//                         <path
-//                           fill="#34A853"
-//                           d="M9 18c2.4 0 4.4-.8 5.8-2.2l-2.4-1.8c-.7.5-1.6.8-3.4.8-2.6 0-4.8-1.8-5.6-4.1H.9v2.3C2.3 15.6 5.4 18 9 18z"
-//                         />
-//                         <path
-//                           fill="#FBBC05"
-//                           d="M3.4 10.7c-.2-.6-.3-1.3-.3-2s.1-1.4.3-2V4.4H.9C.3 5.7 0 7.3 0 9s.3 3.3.9 4.6l2.5-1.9z"
-//                         />
-//                         <path
-//                           fill="#EA4335"
-//                           d="M9 3.6c1.5 0 2.8.5 3.8 1.4l2.9-2.9C13.4.6 11.4 0 9 0 5.4 0 2.3 2.4.9 5.4l2.5 2.3c.8-2.3 3-4.1 5.6-4.1z"
-//                         />
-//                       </svg>
-//                       Sign in with Google
-//                     </button>
-                 
-//                   </div>
+//           {/* Header */}
+//           <h1 className="text-3xl font-bold text-slate-900">
+//             {mode === "login" ? "Welcome back" : "Create your account"}
+//           </h1>
+//           <p className="mt-1 text-slate-600">
+//             {mode === "login"
+//               ? "Sign in to manage and send agreements."
+//               : "Start sending and signing secure, legally‑binding documents."}
+//           </p>
+
+//           {/* Region toggle */}
+//           <div className="mt-6 inline-flex rounded-full bg-slate-100 p-1">
+//             <button
+//               type="button"
+//               onClick={() => setRegion("global")}
+//               className={`px-4 py-2 rounded-full text-sm font-medium transition ${
+//                 region === "global"
+//                   ? "bg-slate-900 text-white shadow"
+//                   : "text-slate-700 hover:text-slate-900"
+//               }`}
+//             >
+//               🌐 Global
+//             </button>
+//             <button
+//               type="button"
+//               onClick={() => setRegion("wa")}
+//               className={`px-4 py-2 rounded-full text-sm font-medium transition ${
+//                 region === "wa"
+//                   ? "bg-slate-900 text-white shadow"
+//                   : "text-slate-700 hover:text-slate-900"
+//               }`}
+//             >
+//               🛡️ West Africa
+//             </button>
+//           </div>
+//           {region === "wa" ? (
+//             <p className="mt-2 text-xs text-slate-500">
+//               AU/ECOWAS‑aligned controls. Local date formats apply (e.g. DD/MM/YYYY).
+//             </p>
+//           ) : (
+//             <p className="mt-2 text-xs text-slate-500">ESIGN/UETA and eIDAS‑ready workflows.</p>
+//           )}
+
+//           {/* Card */}
+//           <div className="mt-6 rounded-2xl border border-slate-200 bg-white/70 backdrop-blur p-6 shadow-sm">
+//             {/* Tabs */}
+//             <div className="flex items-center gap-2 mb-4">
+//               <button
+//                 type="button"
+//                 onClick={() => setMode("login")}
+//                 className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
+//                   mode === "login"
+//                     ? "bg-slate-900 text-white"
+//                     : "text-slate-600 hover:text-slate-900"
+//                 }`}
+//               >
+//                 Login
+//               </button>
+//               <button
+//                 type="button"
+//                 onClick={() => setMode("signup")}
+//                 className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
+//                   mode === "signup"
+//                     ? "bg-slate-900 text-white"
+//                     : "text-slate-600 hover:text-slate-900"
+//                 }`}
+//               >
+//                 Create Account
+//               </button>
+//             </div>
+
+//             {err && (
+//               <div className="mb-4 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+//                 {err}
+//               </div>
+//             )}
+
+//             {mode === "login" ? (
+//               <form onSubmit={handleLogin} className="space-y-4">
+//                 <div>
+//                   <label htmlFor="email" className="block text-sm font-medium text-slate-700">
+//                     Email
+//                   </label>
+//                   <input
+//                     id="email"
+//                     type="email"
+//                     autoComplete="email"
+//                     required
+//                     className="mt-1 block w-full rounded-lg border-slate-300 focus:border-purple-600 focus:ring-purple-600"
+//                     placeholder="you@company.com"
+//                     value={email}
+//                     onChange={(e) => setEmail(e.target.value.trim())}
+//                   />
 //                 </div>
-//               ) : (
-//                 <div className="flex flex-col w-full">
-//                   <h1 className="text-[30px] mt-[24px]">Create account!</h1>
-//                   <div className="flex flex-col my-[4px] px-[24px] py-[16px] bg-white rounded-[16px] border border-[#cbd5e180] shadow-md register-form">
-//                     <div className="space-y-4">
-//                       <div>
-//                         <label className="block text-sm font-medium text-gray-700 mb-1">
-//                           Name *
-//                         </label>
-//                         <input
-//                           name="name"
-//                           value={formData.name}
-//                           onChange={handleInputChange}
-//                           className="w-full px-4 py-3 rounded-[16px] border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-//                           placeholder="Enter your full name"
-//                         />
-//                         {errors.name && (
-//                           <p className="text-[12px] text-red-600">
-//                             * Name is required
-//                           </p>
-//                         )}
-//                       </div>
 
-//                       <div>
-//                         <label className="block text-sm font-medium text-gray-700 mb-1">
-//                           Email *
-//                         </label>
-//                         <input
-//                           name="email"
-//                           type="email"
-//                           value={formData.email}
-//                           onChange={handleInputChange}
-//                           className="w-full px-4 py-3 rounded-[16px] border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-//                           placeholder="Enter your email"
-//                         />
-//                         {errors.email && (
-//                           <p className="text-[12px] text-red-600">
-//                             * Valid email is required
-//                           </p>
-//                         )}
-//                       </div>
-
-//                       <div>
-//                         <label className="block text-sm font-medium text-gray-700 mb-1">
-//                           Phone *
-//                         </label>
-//                         <input
-//                           name="phone"
-//                           type="tel"
-//                           value={formData.phone}
-//                           onChange={handleInputChange}
-//                           className="w-full px-4 py-3 rounded-[16px] border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-//                           placeholder="Enter your phone number"
-//                         />
-//                         {errors.phone && (
-//                           <p className="text-[12px] text-red-600">
-//                             * Valid phone number is required
-//                           </p>
-//                         )}
-//                       </div>
-
-//                       <div>
-//                         <label className="block text-sm font-medium text-gray-700 mb-1">
-//                           Company *
-//                         </label>
-//                         <input
-//                           name="company"
-//                           value={formData.company}
-//                           onChange={handleInputChange}
-//                           className="w-full px-4 py-3 rounded-[16px] border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-//                           placeholder="Enter your company name"
-//                         />
-//                         {errors.company && (
-//                           <p className="text-[12px] text-red-600">
-//                             * Company name is required
-//                           </p>
-//                         )}
-//                       </div>
-
-//                       <div>
-//                         <label className="block text-sm font-medium text-gray-700 mb-1">
-//                           Job title *
-//                         </label>
-//                         <input
-//                           name="jobTitle"
-//                           value={formData.jobTitle}
-//                           onChange={handleInputChange}
-//                           className="w-full px-4 py-3 rounded-[16px] border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-//                           placeholder="Enter your job title"
-//                         />
-//                         {errors.jobTitle && (
-//                           <p className="text-[12px] text-red-600">
-//                             * Job title is required
-//                           </p>
-//                         )}
-//                       </div>
-
-//                       <div className="relative">
-//                         <label className="block text-sm font-medium text-gray-700 mb-1">
-//                           Password *
-//                         </label>
-//                         <div className="relative">
-//                           <input
-//                             name="regPassword"
-//                             type={showRegPassword ? "text" : "password"}
-//                             value={formData.regPassword}
-//                             onChange={handleInputChange}
-//                             className="w-full px-4 py-3 rounded-[16px] border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 pr-12"
-//                             placeholder="Create a password"
-//                           />
-//                           <button
-//                             type="button"
-//                             onClick={() => setShowRegPassword(!showRegPassword)}
-//                             className="absolute right-3 top-1/2 -translate-y-1/2"
-//                           ></button>
-//                         </div>
-//                         {errors.regPassword && (
-//                           <p className="text-[12px] text-red-600">
-//                             * Password is required
-//                           </p>
-//                         )}
-//                       </div>
-
-//                       <div className="flex items-center mt-4">
-//                         <input
-//                           name="agreeTerms"
-//                           type="checkbox"
-//                           checked={formData.agreeTerms}
-//                           onChange={handleInputChange}
-//                           className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-//                         />
-//                         <label className="ml-2 text-sm text-gray-600">
-//                           I agree to the{" "}
-//                           <a href="#" className="text-blue-600 hover:underline">
-//                             Terms of Service
-//                           </a>{" "}
-//                           and{" "}
-//                           <a href="#" className="text-blue-600 hover:underline">
-//                             Privacy Policy
-//                           </a>
-//                         </label>
-//                       </div>
-//                       {errors.agreeTerms && (
-//                         <p className="text-[12px] text-red-600">
-//                           * You must agree to the terms
-//                         </p>
-//                       )}
-//                     </div>
-//                   </div>
-//                   <div className="flex items-center gap-[20px] mt-[10px] flex-col lg:flex-row">
+//                 <div>
+//                   <label htmlFor="password" className="block text-sm font-medium text-slate-700">
+//                     Password
+//                   </label>
+//                   <div className="mt-1 relative">
+//                     <input
+//                       id="password"
+//                       type={showPwd ? "text" : "password"}
+//                       autoComplete="current-password"
+//                       required
+//                       className="block w-full rounded-lg border-slate-300 pr-12 focus:border-purple-600 focus:ring-purple-600"
+//                       placeholder="Enter your password"
+//                       value={password}
+//                       onChange={(e) => setPassword(e.target.value)}
+//                     />
 //                     <button
-//                       onClick={checkRegisterValidation}
-//                       className="flex justify-center bg-[#002864] text-white text-[14px] text-center w-1/2 px-[16px] py-[10px] rounded-[20px]"
+//                       type="button"
+//                       aria-label={showPwd ? "Hide password" : "Show password"}
+//                       onClick={() => setShowPwd((v) => !v)}
+//                       className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 p-2"
 //                     >
-//                       Register
-//                     </button>
-//                     <button
-//                       className="flex justify-center bg-[#29354a] text-white text-[14px] text-center w-1/2 px-[16px] py-[10px] rounded-[20px]"
-//                       onClick={() => {
-//                         setLogin(true);
-//                       }}
-//                     >
-//                       Login
+//                       {showPwd ? "🙈" : "👁️"}
 //                     </button>
 //                   </div>
 //                 </div>
-//               )}
-//             </div>
-//             <div className="hidden lg:flex lg:w-1/2">
-//               <img src={img} alt="img" className="w-full" />
-//             </div>
+
+//                 <div className="flex items-center justify-between">
+//                   <label className="inline-flex items-center gap-2 text-sm text-slate-600">
+//                     <input type="checkbox" className="rounded border-slate-300" />
+//                     Remember me
+//                   </label>
+//                   <Link to="/forgetpassword" className="text-sm text-purple-700 hover:text-purple-800">
+//                     Forgot password?
+//                   </Link>
+//                 </div>
+
+//                 <button
+//                   type="submit"
+//                   disabled={loading}
+//                   className="w-full rounded-lg bg-purple-600 px-4 py-2.5 font-semibold text-white shadow-sm hover:bg-purple-700 disabled:opacity-60"
+//                 >
+//                   {loading ? "Signing in…" : "Login"}
+//                 </button>
+
+//                 <div className="flex items-center gap-3">
+//                   <div className="h-px flex-1 bg-slate-200" />
+//                   <span className="text-xs text-slate-500">or</span>
+//                   <div className="h-px flex-1 bg-slate-200" />
+//                 </div>
+
+//                 {/* Social row (identical look) */}
+//                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+//                   <button type="button" onClick={handleOAuthGoogle} className={socialBtnClass}>
+//                     <img
+//                       alt="Google"
+//                       src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+//                       className="h-5 w-5"
+//                     />
+//                     Continue with Google
+//                   </button>
+//                   <button
+//                     type="button"
+//                     onClick={handleOAuthMicrosoft}
+//                     className={socialBtnClass}
+//                   >
+//                     <img
+//                       alt="Microsoft"
+//                       src="https://static-00.iconduck.com/assets.00/microsoft-azure-icon-2048x2048-1p4mxwrt.png"
+//                       className="h-5 w-5"
+//                     />
+//                     Continue with Microsoft
+//                   </button>
+//                 </div>
+
+//                 <button
+//                   type="button"
+//                   onClick={() => setMode("signup")}
+//                   className="block w-full text-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 font-medium text-slate-800 hover:bg-slate-50"
+//                 >
+//                   Create Account
+//                 </button>
+
+//                 <p className="text-[11px] text-slate-500 leading-relaxed">
+//                   By continuing you agree to our{" "}
+//                   <Link to="/legal/terms" className="text-slate-700 underline decoration-slate-300 hover:text-slate-900">
+//                     Terms
+//                   </Link>{" "}
+//                   and{" "}
+//                   <Link to="/legal/privacy" className="text-slate-700 underline decoration-slate-300 hover:text-slate-900">
+//                     Privacy Policy
+//                   </Link>
+//                   . {region === "wa" ? "AU/ECOWAS‑aligned practices apply." : "ESIGN/UETA applies."}
+//                 </p>
+//               </form>
+//             ) : (
+//               <form onSubmit={handleSignup} className="space-y-4">
+//                 <div>
+//                   <label htmlFor="fullName" className="block text-sm font-medium text-slate-700">
+//                     Full name
+//                   </label>
+//                   <input
+//                     id="fullName"
+//                     type="text"
+//                     required
+//                     className="mt-1 block w-full rounded-lg border-slate-300 focus:border-purple-600 focus:ring-purple-600"
+//                     placeholder="Jane Doe"
+//                     value={fullName}
+//                     onChange={(e) => setFullName(e.target.value)}
+//                   />
+//                 </div>
+
+//                 <div>
+//                   <label htmlFor="newEmail" className="block text-sm font-medium text-slate-700">
+//                     Work email
+//                   </label>
+//                   <input
+//                     id="newEmail"
+//                     type="email"
+//                     autoComplete="email"
+//                     required
+//                     className="mt-1 block w-full rounded-lg border-slate-300 focus:border-purple-600 focus:ring-purple-600"
+//                     placeholder="you@company.com"
+//                     value={newEmail}
+//                     onChange={(e) => setNewEmail(e.target.value.trim())}
+//                   />
+//                 </div>
+
+//                 <div>
+//                   <label htmlFor="newPassword" className="block text-sm font-medium text-slate-700">
+//                     Password
+//                   </label>
+//                   <input
+//                     id="newPassword"
+//                     type="password"
+//                     autoComplete="new-password"
+//                     required
+//                     minLength={8}
+//                     className="mt-1 block w-full rounded-lg border-slate-300 focus:border-purple-600 focus:ring-purple-600"
+//                     placeholder="At least 8 characters"
+//                     value={newPassword}
+//                     onChange={(e) => setNewPassword(e.target.value)}
+//                   />
+//                 </div>
+
+//                 <div>
+//                   <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-700">
+//                     Confirm password
+//                   </label>
+//                   <input
+//                     id="confirmPassword"
+//                     type="password"
+//                     autoComplete="new-password"
+//                     required
+//                     minLength={8}
+//                     className="mt-1 block w-full rounded-lg border-slate-300 focus:border-purple-600 focus:ring-purple-600"
+//                     value={confirmPassword}
+//                     onChange={(e) => setConfirmPassword(e.target.value)}
+//                   />
+//                 </div>
+
+//                 <label className="mt-2 inline-flex items-center gap-2 text-sm text-slate-700">
+//                   <input
+//                     type="checkbox"
+//                     checked={agree}
+//                     onChange={(e) => setAgree(e.target.checked)}
+//                     className="rounded border-slate-300"
+//                   />
+//                   I agree to the{" "}
+//                   <Link to="/legal/terms" className="underline decoration-slate-300 hover:text-slate-900">
+//                     Terms
+//                   </Link>{" "}
+//                   and{" "}
+//                   <Link to="/legal/privacy" className="underline decoration-slate-300 hover:text-slate-900">
+//                     Privacy Policy
+//                   </Link>
+//                   .
+//                 </label>
+
+//                 <button
+//                   type="submit"
+//                   disabled={loading}
+//                   className="w-full rounded-lg bg-purple-600 px-4 py-2.5 font-semibold text-white shadow-sm hover:bg-purple-700 disabled:opacity-60"
+//                 >
+//                   {loading ? "Creating account…" : "Create Account"}
+//                 </button>
+
+//                 <div className="flex items-center gap-3">
+//                   <div className="h-px flex-1 bg-slate-200" />
+//                   <span className="text-xs text-slate-500">or</span>
+//                   <div className="h-px flex-1 bg-slate-200" />
+//                 </div>
+
+//                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+//                   <button type="button" onClick={handleOAuthGoogle} className={socialBtnClass}>
+//                     <img
+//                       alt="Google"
+//                       src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+//                       className="h-5 w-5"
+//                     />
+//                     Continue with Google
+//                   </button>
+//                   <button
+//                     type="button"
+//                     onClick={handleOAuthMicrosoft}
+//                     className={socialBtnClass}
+//                   >
+//                     <img
+//                       alt="Microsoft"
+//                       src="https://static-00.iconduck.com/assets.00/microsoft-azure-icon-2048x2048-1p4mxwrt.png"
+//                       className="h-5 w-5"
+//                     />
+//                     Continue with Microsoft
+//                   </button>
+//                 </div>
+
+//                 <button
+//                   type="button"
+//                   onClick={() => setMode("login")}
+//                   className="block w-full text-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 font-medium text-slate-800 hover:bg-slate-50"
+//                 >
+//                   Back to Login
+//                 </button>
+//               </form>
+//             )}
+//           </div>
+
+//           {/* Trust markers */}
+//           <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500">
+//             <span className="inline-flex items-center gap-2">🔒 AES‑256 at rest</span>
+//             <span className="inline-flex items-center gap-2">✅ ESIGN/UETA</span>
+//             <span className="inline-flex items-center gap-2">🇪🇺 eIDAS ready</span>
+//             <span className="inline-flex items-center gap-2">🌍 AU/ECOWAS aligned</span>
 //           </div>
 //         </div>
 //       </div>
-//     </>
+
+//       {/* Right: brand panel */}
+//       <div className="hidden lg:block relative">
+//         <div className="absolute inset-0 bg-gradient-to-br from-purple-600 via-indigo-600 to-blue-600" />
+//         <div className="absolute inset-0 opacity-10 mix-blend-overlay bg-[radial-gradient(circle_at_20%_20%,white,transparent_30%),radial-gradient(circle_at_80%_30%,white,transparent_25%),radial-gradient(circle_at_10%_80%,white,transparent_25%)]" />
+//         <div className="relative h-full flex items-center justify-center p-16 text-white">
+//           <div className="max-w-lg">
+//             <div className="text-4xl font-semibold leading-tight">
+//               Securely sign & automate agreements
+//             </div>
+//             <p className="mt-4 text-indigo-100">
+//               Faster workflows, tamper‑proof audit trails, and global compliance—built in.
+//             </p>
+//           </div>
+//         </div>
+//       </div>
+//     </div>
 //   );
 // }
 
-import { useState, useEffect, useRef } from "react";
+// src/login.jsx
+import React, { useMemo, useState, useEffect } from "react";
 import axios from "axios";
-import { ToastContainer, toast } from "react-toastify";
-import img from "./images/loginimg.svg";
-import { Link, useNavigate } from "react-router-dom";
 import { BASE_URL } from "./baseUrl";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+
+const REGION_KEY = "elex_region"; // 'global' | 'wa'
+const REGISTER_ENDPOINT_PRIMARY = "/register";
+const REGISTER_ENDPOINT_FALLBACK = "/registerAndLogin";
 
 export default function Login() {
-  const [region, setRegion] = useState("global");
-  const [login, setLogin] = useState(true);
-  const [showPassword, setShowPassword] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // deep-link: /join?mode=signup
+  const initialMode = useMemo(() => {
+    const m = new URLSearchParams(location.search).get("mode");
+    return m === "signup" ? "signup" : "login";
+  }, [location.search]);
+
+  const [mode, setMode] = useState(initialMode); // 'login' | 'signup'
+  const [region, setRegion] = useState(localStorage.getItem(REGION_KEY) || "global");
+
+  // login fields
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [loginEmailError, setLoginEmailError] = useState(false);
-  const [loginPasswordError, setLoginPasswordError] = useState(false);
+  const [showPwd, setShowPwd] = useState(false);
 
-  const [showRegPassword, setShowRegPassword] = useState(false);
+  // signup fields
+  const [fullName, setFullName] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [agree, setAgree] = useState(false);
 
-  // --- Google Identity Services ---
-  const GOOGLE_CLIENT_ID =
-    process.env.REACT_APP_GOOGLE_CLIENT_ID ||
-    "87856424688-nhil5aauafjgorqfrnt432sf2gg66a4k.apps.googleusercontent.com"; // fallback to your current id
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
 
-  const loginGoogleBtnRef = useRef(null);
-  const registerGoogleBtnRef = useRef(null);
-  const [googleReady, setGoogleReady] = useState(false);
-
-  // Load the Google script once
   useEffect(() => {
-    const existing = document.getElementById("google-client-script");
-    const onload = () => setGoogleReady(true);
+    localStorage.setItem(REGION_KEY, region);
+  }, [region]);
 
-    if (existing) {
-      if (window.google?.accounts?.id) setGoogleReady(true);
-      else existing.addEventListener("load", onload);
-      return () => existing.removeEventListener("load", onload);
+  // Normalize the backend origin for postMessage origin checks
+  const BACKEND_ORIGIN = useMemo(() => {
+    try {
+      return new URL(BASE_URL).origin;
+    } catch {
+      // If BASE_URL is already an origin
+      return BASE_URL;
     }
-
-    const s = document.createElement("script");
-    s.src = "https://accounts.google.com/gsi/client";
-    s.async = true;
-    s.defer = true;
-    s.id = "google-client-script";
-    s.onload = onload;
-    document.head.appendChild(s);
   }, []);
 
-  // Callback when Google returns the ID token
-  const handleGoogleCredential = async (resp) => {
+  /* -----------------------------------------------------------------------
+   * SOCIAL BUTTON SIZE / LOOK CONTROL
+   * - Both Google and Microsoft share this exact class string.
+   * - Width: `w-full` makes each button fill its grid cell.
+   * - Height / padding: controlled by `py-2.5` and `h-[44px]`.
+   * - Icon size: see <img className="h-5 w-5" /> inside each button.
+   * --------------------------------------------------------------------- */
+  const socialBtnClass =
+    "inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 " +
+    "bg-white px-4 py-2.5 text-slate-700 hover:bg-slate-50 w-full h-[44px]";
+
+  /* -----------------------------------------------------------------------
+   * GOOGLE OAUTH — STEP 2: CAPTURE THE ID TOKEN & EXCHANGE IT
+   * --------------------------------------------------------------------- */
+
+  // 2b. Exchange a Google ID token for your app's JWT
+  const exchangeGoogleCredential = async (credential) => {
+    if (!credential) return;
+    setLoading(true);
+    setErr("");
     try {
-      const { credential } = resp || {};
-      if (!credential) throw new Error("Missing Google credential");
+      const { data } = await axios.post(`${BASE_URL}/auth/google`, {
+        credential,
+        // optional: include region so the backend can set regional prefs
+        region,
+      });
 
-      // Exchange Google ID token for your app's JWT
-      // If your backend path is different, change this URL (e.g. /googleLogin)
-      const { data } = await axios.post(`${BASE_URL}/auth/google`, { credential });
-
-      localStorage.setItem("token", data.token);
-      toast.success("Signed in with Google", { containerId: "loginContainer" });
+      if (data?.token) {
+        localStorage.setItem("token", data.token);
+        if (data.user) localStorage.setItem("user", JSON.stringify(data.user));
+      }
       navigate("/admin");
     } catch (e) {
-      console.error(e);
-      toast.error(e?.response?.data?.error || "Google sign‑in failed", {
-        containerId: "loginContainer",
-      });
+      const msg =
+        e?.response?.data?.error ||
+        e?.response?.data?.message ||
+        "Google sign‑in failed. Please try again.";
+      setErr(msg);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Initialize GIS and render buttons whenever the pane changes (login/register)
+  // 2a(i). Listen for a postMessage from the popup (recommended path)
   useEffect(() => {
-    if (!googleReady || !GOOGLE_CLIENT_ID || !window.google?.accounts?.id) return;
+    const onMsg = (ev) => {
+      // Only accept messages from your backend origin
+      if (!ev?.data || ev.origin !== BACKEND_ORIGIN) return;
+      if (ev.data.type !== "elex:google") return;
 
-    // Initialize once (idempotent)
-    window.google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
-      callback: handleGoogleCredential,
-      auto_select: false,
-      cancel_on_tap_outside: true,
-    });
-
-    // Render into the visible container(s)
-    const renderInto = (el) => {
-      if (!el) return;
-      // avoid duplicates when toggling panes
-      el.innerHTML = "";
-      window.google.accounts.id.renderButton(el, {
-        type: "standard",       // or 'icon'
-        theme: "filled_blue",   // 'outline'
-        size: "large",          // 'medium' | 'small'
-        shape: "rectangular",
-        text: "continue_with",  // 'signin_with' | 'signup_with'
-        logo_alignment: "left",
-      });
+      const credential = ev.data.credential || ev.data.id_token;
+      if (credential) {
+        exchangeGoogleCredential(credential);
+      }
     };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [BACKEND_ORIGIN, region]);
 
-    renderInto(login ? loginGoogleBtnRef.current : registerGoogleBtnRef.current);
+  // 2a(ii). Hash fallback: if backend redirected current tab with #credential=...
+  useEffect(() => {
+    const hash = window.location.hash || "";
+    if (hash.includes("credential=") || hash.includes("id_token=")) {
+      const params = new URLSearchParams(hash.replace(/^#/, ""));
+      const cred = params.get("credential") || params.get("id_token");
+      if (cred) {
+        // Clean the URL before exchanging
+        try {
+          window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+        } catch {}
+        exchangeGoogleCredential(cred);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [region]);
 
-    // Optional One Tap (we only prompt on login screen)
-    if (login) window.google.accounts.id.prompt();
-  }, [googleReady, GOOGLE_CLIENT_ID, login]);
+  // Start Google OAuth in a popup (better UX; if blocked, fall back to full redirect)
+  const handleOAuthGoogle = () => {
+    const w = 480;
+    const h = 640;
+    const left = window.screenX + (window.outerWidth - w) / 2;
+    const top = window.screenY + (window.outerHeight - h) / 2;
+    const features = `popup=yes,width=${w},height=${h},left=${left},top=${top}`;
+    const url = `${BASE_URL}/auth/google`;
 
-  // ------------------ existing logic ------------------
-  const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  const validatePhone = (phone) => {
-    const phonePattern = /^(?:\+?\d{1,3}[-\s]?)?(\(?\d{2,4}\)?[-\s]?)?\d{7,10}$/;
-    return phonePattern.test(phone);
+    const popup = window.open(url, "elex-google", features);
+    if (popup) {
+      popup.focus();
+    } else {
+      // if the browser blocked the popup, just redirect the full tab
+      window.location.href = url;
+    }
   };
-  const navigate = useNavigate();
 
-  const checkLoginValidation = async () => {
-    if (email.length === 0) {
-      setLoginEmailError(true);
-    } else if (email.length > 0) {
-      setLoginEmailError(false);
-    }
-    if (password.length === 0) {
-      setLoginPasswordError(true);
-    } else if (password.length > 0) {
-      setLoginPasswordError(false);
-    }
+  // Microsoft OAuth (placeholder; style & size match Google)
+  const handleOAuthMicrosoft = () => {
+    window.location.href = `${BASE_URL}/auth/microsoft`; // update when you wire MS
+  };
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setErr("");
+    setLoading(true);
     try {
-      let response = await axios.post(`${BASE_URL}/login`, { email, password });
-      toast.success("User logged in sucessfully", {
-        containerId: "loginContainer",
-      });
-      localStorage.setItem("token", response.data.token);
+      const { data } = await axios.post(`${BASE_URL}/login`, { email, password, region });
+      if (data?.token) {
+        localStorage.setItem("token", data.token);
+        if (data.user) localStorage.setItem("user", JSON.stringify(data.user));
+      }
       navigate("/admin");
     } catch (e) {
-      if (e?.response?.data?.error) {
-        toast.error(e?.response?.data?.error, {
-          containerId: "loginContainer",
-        });
-      } else {
-        toast.error("Something went wrong please try again", {
-          containerId: "loginContainer",
-        });
-      }
+      const msg =
+        e?.response?.data?.error ||
+        e?.response?.data?.message ||
+        "Could not sign in. Please check your email and password.";
+      setErr(msg);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const [formData, setFormData] = useState({
-    email: "",
-    password: "",
-    name: "",
-    phone: "",
-    company: "",
-    jobTitle: "",
-    regPassword: "",
-    agreeTerms: false,
-  });
-  const [errors, setErrors] = useState({
-    email: false,
-    password: false,
-    name: false,
-    phone: false,
-    company: false,
-    jobTitle: false,
-    regPassword: false,
-    agreeTerms: false,
-  });
+  const handleSignup = async (e) => {
+    e.preventDefault();
+    setErr("");
 
-  const checkRegisterValidation = async () => {
-    const newErrors = {
-      name: formData.name === "",
-      email: formData.email === "" || !validateEmail(formData.email),
-      phone: formData.phone === "" || !validatePhone(formData.phone),
-      company: formData.company === "",
-      jobTitle: formData.jobTitle === "",
-      regPassword: formData.regPassword === "",
-      agreeTerms: !formData.agreeTerms,
-    };
-    setErrors(newErrors);
-    if (Object.values(newErrors).some((v) => v)) {
-      return !Object.values(newErrors).some((v) => v);
+    if (!agree) {
+      setErr("Please accept the Terms and Privacy Policy to continue.");
+      return;
+    }
+    if (!newPassword || newPassword.length < 8) {
+      setErr("Password must be at least 8 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setErr("Passwords do not match.");
+      return;
     }
 
+    setLoading(true);
     try {
-      let data = {
-        ...formData,
-        password: formData.regPassword,
-        job_title: formData.jobTitle,
-      };
-      let response = await axios.post(`${BASE_URL}/register`, data);
-      toast.success(response.data.message, { containerId: "loginContainer" });
-      setFormData({
-        email: "",
-        password: "",
-        name: "",
-        phone: "",
-        company: "",
-        jobTitle: "",
-        regPassword: "",
-        agreeTerms: false,
-      });
-      setLogin(true); // after registering, show login pane
-    } catch (e) {
-      if (e?.response?.data?.error) {
-        toast.error(e?.response?.data?.error, { containerId: "loginContainer" });
-      } else {
-        toast.error("Something went wrong please try again", {
-          containerId: "loginContainer",
+      let data;
+      try {
+        const res = await axios.post(`${BASE_URL}${REGISTER_ENDPOINT_PRIMARY}`, {
+          name: fullName,
+          email: newEmail,
+          password: newPassword,
+          region,
         });
+        data = res.data;
+      } catch {
+        const res = await axios.post(`${BASE_URL}${REGISTER_ENDPOINT_FALLBACK}`, {
+          email: newEmail,
+          name: fullName,
+        });
+        data = res.data;
       }
-    }
-  };
 
-  const handleInputChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === "checkbox" ? checked : value,
-    }));
+      if (data?.token) {
+        localStorage.setItem("token", data.token);
+        if (data.user) localStorage.setItem("user", JSON.stringify(data.user));
+      }
+      navigate("/admin");
+    } catch (e) {
+      const msg =
+        e?.response?.data?.error ||
+        e?.response?.data?.message ||
+        "Could not create account. Please try again.";
+      setErr(msg);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <>
-      <ToastContainer containerId={"loginContainer"} />
-      <div className="lg:px-[64px] lg:pt-[40px] px-[20px] py-[20px] lg:pb-[10px]  bg-[#e5e7eb]">
-        <div className="p-[24px] bg-[#ffffff] rounded-[16px]">
-          <a href="/" className="max-w-[250px] flex justify-center items-center gap-1">
+    <div className="min-h-screen grid lg:grid-cols-2 bg-gradient-to-b from-white to-slate-50">
+      {/* Left: form */}
+      <div className="flex items-center justify-center px-6 py-10">
+        <div className="w-full max-w-md">
+          {/* Brand */}
+          <div className="flex items-center gap-3 mb-6">
             <img
-              alt="logo"
-              className="h-8"
               src="https://res.cloudinary.com/dbjwbveqn/image/upload/v1744296499/icononly_transparent_nobuffer_xmjeis.png"
+              alt="E‑Lex Signature"
+              className="h-9 w-9 -rotate-6"
             />
-            E-Lex Signature
-          </a>
+            <span className="text-2xl font-bold text-slate-900">E‑Lex Signature</span>
+          </div>
 
-          <div className="flex gap-[10px]">
-            <div className="w-full flex  lg:w-1/2">
-              {login ? (
-                // -------------------- LOGIN PANE --------------------
-                <div className="flex flex-col w-full">
-                  <h1 className="text-[30px] mt-[24px]">Welcome back!</h1>
-                  <p className="mb-[10px] text-[12px] text-[#878787]">
-                    Login to your account
-                  </p>
+          {/* Header */}
+          <h1 className="text-3xl font-bold text-slate-900">
+            {mode === "login" ? "Welcome back" : "Create your account"}
+          </h1>
+          <p className="mt-1 text-slate-600">
+            {mode === "login"
+              ? "Sign in to manage and send agreements."
+              : "Start sending and signing secure, legally‑binding documents."}
+          </p>
 
-                  <div className="shadow-lg bg-base-100 outline outline-1 w-fit mx-auto outline-slate-300/50 flex justify-center items-center rounded-full my-2">
-                    <div
-                      onClick={() => setRegion("global")}
-                      className={`op-bg-secondary  ${
-                        region === "global"
-                          ? "bg-[#29354a] text-white "
-                          : "bg-white text-black"
-                      } rounded-full  capitalize px-10 py-2 my-2 first:ml-2 last:mr-2 cursor-pointer`}
-                    >
-                      Global
-                    </div>
-                    <div
-                      onClick={() => setRegion("europe")}
-                      className={`op-bg-secondary flex items-center gap-[10px]  ${
-                        region === "europe"
-                          ? "bg-[#29354a] text-white "
-                          : "bg-white text-black"
-                      } rounded-full  capitalize px-10 py-2 my-2 first:ml-2 last:mr-2 cursor-pointer`}
-                    >
-                      <img
-                        src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAsQAAALEBxi1JjQAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAP4SURBVEiJtZV9aFVlHMc/z7lv272bm3cv7u4t26ZFmwjJFuFqTSIVkoqQisJpZVD9EY1AkuoPB5UYwiCRiJyGppVYkURG3aWmZTpthDhsd5vb7nHz7r5t93rvds95nv7Ympu0l7J+f51zft+X3+/3POd54H8OMVMirHfdr+BpUMsFuIEBgTohTPZmlVR0/muDaF+fW2pj+xA8PAMnJVA7sjzlbwkhzH9kEO7uzsYhTwF3TXw6reCohgpKIcqEEutBlU3k9md7yjYIIdR8uyF0tetQWPepkO5LRPydT9ycV+qcLeTv3BHWfSqs+1RE73p+/uIDvmVh3SfDuk+Fr3ZunA0b1js/njDRlWq1zobV/noQUqwHhICO7ILyfbORpFRbAQl4IgPFtfMyAFUJoIT6fq655hQv6Qc6AJS0VM3TQLjHyxPB2QhTCgoACE3lzIayAhSuaK3t7R0sstuMWCBqqy6sbn1wLvne3kDhBL6moNpbOXB21cW/wwkAz4rWbgSLbVaBwy6IXZe4szSsFsG1kInDLsh3WxgYMkkZCk+elURSEhmR4yKKvXpb/aYZOwBYlGNh1xt5GKZi18Eoa2pd5GZbCEZMvvTG2PKcG6UULzUF2P1mHpERydHjcQ5/F5u108k1qFmWxufHYry4LUA8Mb7G23aHKPWM1+A9cx3vmQTL73AQGZFsbQ6y6p70uSZ5w8BqgbGUor7GSX2NcxJgTBwGj6xyseQ2GyfPJynItbCnKZ8PDw8DoJRhm9NgOC4pK7ERjJrYJgbncgpc6eOnyVfeOK9uHyI5KglFTfRrBslRiZIJjFTgbvNCxcuqvaJ4RoPjZxNYNFhX5+KjI8N09Y3x2saF7P40SnRE0T9oTJIuXBply84ga1ZqaMYVtjd87QHel5ITqq18xVSDabtI0yRS3vg1bn4XQqGURKaGybTrPL7yd15Y28bi/MhUTRM4MBY1fkx/oKdlkl3kDrH9mf2svPMSNqtJ/oIorz92hHXVZ0m3J1iQNsimui/YVPcZCxx93L5oiLcbfpgm3v6HhaY96RZpqA2puHwXpmzTbGeMp+47yULXMD9dLEKkhWmo99LRn8vR0xlgM9i8+jQAh45X0d5TgD+YSYYjhj+gkTLgvQPpNDfGGQ0ZaFbt28kR5VW2JDPSYo7yghAAv3UXIISiZqkf09Q411kIQM1SPwC/Xi4CoPHRn9m8+hSv7HQB0NwYJ0MajEZSym51ljjXXfaPG1R9clDJ2JMw/7sDIM1u0PrOXrKdEZRUOFMpjBETW6a1xfVQz7OTHdxKqLbyimTEPD8WNTKVApvT8otr7ZV7b1V3Wox6Sytj35T2x4+VfvCfCs8n/gTaZ7pyyNqI1wAAAABJRU5ErkJggg=="
-                        alt="gdpr"
-                      />
-                      West Africa
-                    </div>
-                  </div>
+          {/* Region toggle */}
+          <div className="mt-6 inline-flex rounded-full bg-slate-100 p-1">
+            <button
+              type="button"
+              onClick={() => setRegion("global")}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition ${
+                region === "global"
+                  ? "bg-slate-900 text-white shadow"
+                  : "text-slate-700 hover:text-slate-900"
+              }`}
+            >
+              🌐 Global
+            </button>
+            <button
+              type="button"
+              onClick={() => setRegion("wa")}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition ${
+                region === "wa"
+                  ? "bg-slate-900 text-white shadow"
+                  : "text-slate-700 hover:text-slate-900"
+              }`}
+            >
+              🛡️ West Africa
+            </button>
+          </div>
+          {region === "wa" ? (
+            <p className="mt-2 text-xs text-slate-500">
+              AU/ECOWAS‑aligned controls. Local date formats apply (e.g. DD/MM/YYYY).
+            </p>
+          ) : (
+            <p className="mt-2 text-xs text-slate-500">ESIGN/UETA and eIDAS‑ready workflows.</p>
+          )}
 
-                  <div className="flex flex-col my-[4px] px-[24px] py-[16px] bg-white rounded-[16px] border border-[#cbd5e180] shadow-md login-form">
-                    <div className="mb-4 w-full">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Email
-                      </label>
-                      <input
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="w-full px-4 py-3 rounded-[16px] border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Enter your email"
-                      />
-                      {loginEmailError ? (
-                        <p className="text-[12px] text-red-600">
-                          * Email is required
-                        </p>
-                      ) : (
-                        ""
-                      )}
-                    </div>
-
-                    <div className="mb-6 w-full relative">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Password
-                      </label>
-                      <div className="relative">
-                        <input
-                          type={showPassword ? "text" : "password"}
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          className="w-full px-4 py-3 rounded-[16px] border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 pr-12"
-                          placeholder="Enter your password"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2"
-                        >
-                          {showPassword ? (
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              className="h-5 w-5 text-gray-400"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
-                              />
-                            </svg>
-                          ) : (
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              className="h-5 w-5 text-gray-400"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                              />
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                              />
-                            </svg>
-                          )}
-                        </button>
-                      </div>
-                      {loginPasswordError ? (
-                        <p className="text-[12px] text-red-600">
-                          * Password is required
-                        </p>
-                      ) : (
-                        ""
-                      )}
-                    </div>
-                    <Link className="text-[12px] text-blue underline" to="/forgetpassword">
-                      Forget Password?
-                    </Link>
-                  </div>
-
-                  <div className="flex items-center gap-[20px] mt-[10px] flex-col lg:flex-row">
-                    <button
-                      onClick={checkLoginValidation}
-                      className="flex justify-center bg-[#002864] text-white text-[14px] text-center w-1/2 px-[16px] py-[10px] rounded-[20px]"
-                    >
-                      Login
-                    </button>
-                    <button
-                      className="flex justify-center bg-[#e10032] text-white text-[14px] text-center w-1/2 px-[16px] py-[10px] rounded-[20px]"
-                      onClick={() => setLogin(false)}
-                    >
-                      Create Account
-                    </button>
-                  </div>
-
-                  <div className="mt-6">
-                    <div className="flex items-center my-6">
-                      <div className="flex-grow border-t border-[#cbd5e180]"></div>
-                      <span className="mx-4 text-sm text-gray-500">or</span>
-                      <div className="flex-grow border-t border-[#cbd5e180]"></div>
-                    </div>
-                  </div>
-
-                  {/* Google button (Login) */}
-                  <div className="mt-4 flex justify-center">
-                    <div ref={loginGoogleBtnRef} />
-                  </div>
-                </div>
-              ) : (
-                // -------------------- REGISTER PANE --------------------
-                <div className="flex flex-col w-full">
-                  <h1 className="text-[30px] mt-[24px]">Create account!</h1>
-
-                  <div className="flex flex-col my-[4px] px-[24px] py-[16px] bg-white rounded-[16px] border border-[#cbd5e180] shadow-md register-form">
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Name *
-                        </label>
-                        <input
-                          name="name"
-                          value={formData.name}
-                          onChange={handleInputChange}
-                          className="w-full px-4 py-3 rounded-[16px] border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="Enter your full name"
-                        />
-                        {errors.name && (
-                          <p className="text-[12px] text-red-600">
-                            * Name is required
-                          </p>
-                        )}
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Email *
-                        </label>
-                        <input
-                          name="email"
-                          type="email"
-                          value={formData.email}
-                          onChange={handleInputChange}
-                          className="w-full px-4 py-3 rounded-[16px] border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="Enter your email"
-                        />
-                        {errors.email && (
-                          <p className="text-[12px] text-red-600">
-                            * Valid email is required
-                          </p>
-                        )}
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Phone *
-                        </label>
-                        <input
-                          name="phone"
-                          type="tel"
-                          value={formData.phone}
-                          onChange={handleInputChange}
-                          className="w-full px-4 py-3 rounded-[16px] border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="Enter your phone number"
-                        />
-                        {errors.phone && (
-                          <p className="text-[12px] text-red-600">
-                            * Valid phone number is required
-                          </p>
-                        )}
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Company *
-                        </label>
-                        <input
-                          name="company"
-                          value={formData.company}
-                          onChange={handleInputChange}
-                          className="w-full px-4 py-3 rounded-[16px] border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="Enter your company name"
-                        />
-                        {errors.company && (
-                          <p className="text-[12px] text-red-600">
-                            * Company name is required
-                          </p>
-                        )}
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Job title *
-                        </label>
-                        <input
-                          name="jobTitle"
-                          value={formData.jobTitle}
-                          onChange={handleInputChange}
-                          className="w-full px-4 py-3 rounded-[16px] border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="Enter your job title"
-                        />
-                        {errors.jobTitle && (
-                          <p className="text-[12px] text-red-600">
-                            * Job title is required
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="relative">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Password *
-                        </label>
-                        <div className="relative">
-                          <input
-                            name="regPassword"
-                            type={showRegPassword ? "text" : "password"}
-                            value={formData.regPassword}
-                            onChange={handleInputChange}
-                            className="w-full px-4 py-3 rounded-[16px] border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 pr-12"
-                            placeholder="Create a password"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowRegPassword(!showRegPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2"
-                          />
-                        </div>
-                        {errors.regPassword && (
-                          <p className="text-[12px] text-red-600">
-                            * Password is required
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="flex items-center mt-4">
-                        <input
-                          name="agreeTerms"
-                          type="checkbox"
-                          checked={formData.agreeTerms}
-                          onChange={handleInputChange}
-                          className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                        />
-                        <label className="ml-2 text-sm text-gray-600">
-                          I agree to the{" "}
-                          <a href="#" className="text-blue-600 hover:underline">
-                            Terms of Service
-                          </a>{" "}
-                          and{" "}
-                          <a href="#" className="text-blue-600 hover:underline">
-                            Privacy Policy
-                          </a>
-                        </label>
-                      </div>
-                      {errors.agreeTerms && (
-                        <p className="text-[12px] text-red-600">
-                          * You must agree to the terms
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-[20px] mt-[10px] flex-col lg:flex-row">
-                    <button
-                      onClick={checkRegisterValidation}
-                      className="flex justify-center bg-[#002864] text-white text-[14px] text-center w-1/2 px-[16px] py-[10px] rounded-[20px]"
-                    >
-                      Register
-                    </button>
-                    <button
-                      className="flex justify-center bg-[#29354a] text-white text-[14px] text-center w-1/2 px-[16px] py-[10px] rounded-[20px]"
-                      onClick={() => setLogin(true)}
-                    >
-                      Login
-                    </button>
-                  </div>
-
-                  <div className="mt-6">
-                    <div className="flex items-center my-6">
-                      <div className="flex-grow border-t border-[#cbd5e180]"></div>
-                      <span className="mx-4 text-sm text-gray-500">or</span>
-                      <div className="flex-grow border-t border-[#cbd5e180]"></div>
-                    </div>
-                  </div>
-
-                  {/* Google button (Register) */}
-                  <div className="mt-4 flex justify-center">
-                    <div ref={registerGoogleBtnRef} />
-                  </div>
-                </div>
-              )}
+          {/* Card */}
+          <div className="mt-6 rounded-2xl border border-slate-200 bg-white/70 backdrop-blur p-6 shadow-sm">
+            {/* Tabs */}
+            <div className="flex items-center gap-2 mb-4">
+              <button
+                type="button"
+                onClick={() => setMode("login")}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
+                  mode === "login"
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Login
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("signup")}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
+                  mode === "signup"
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Create Account
+              </button>
             </div>
 
-            <div className="hidden lg:flex lg:w-1/2">
-              <img src={img} alt="img" className="w-full" />
-            </div>
+            {err && (
+              <div className="mb-4 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {err}
+              </div>
+            )}
+
+            {mode === "login" ? (
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                  <label htmlFor="email" className="block text-sm font-medium text-slate-700">
+                    Email
+                  </label>
+                  <input
+                    id="email"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    className="mt-1 block w-full rounded-lg border-slate-300 focus:border-purple-600 focus:ring-purple-600"
+                    placeholder="you@company.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value.trim())}
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="password" className="block text-sm font-medium text-slate-700">
+                    Password
+                  </label>
+                  <div className="mt-1 relative">
+                    <input
+                      id="password"
+                      type={showPwd ? "text" : "password"}
+                      autoComplete="current-password"
+                      required
+                      className="block w-full rounded-lg border-slate-300 pr-12 focus:border-purple-600 focus:ring-purple-600"
+                      placeholder="Enter your password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      aria-label={showPwd ? "Hide password" : "Show password"}
+                      onClick={() => setShowPwd((v) => !v)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 p-2"
+                    >
+                      {showPwd ? "🙈" : "👁️"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <label className="inline-flex items-center gap-2 text-sm text-slate-600">
+                    <input type="checkbox" className="rounded border-slate-300" />
+                    Remember me
+                  </label>
+                  <Link to="/forgetpassword" className="text-sm text-purple-700 hover:text-purple-800">
+                    Forgot password?
+                  </Link>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full rounded-lg bg-purple-600 px-4 py-2.5 font-semibold text-white shadow-sm hover:bg-purple-700 disabled:opacity-60"
+                >
+                  {loading ? "Signing in…" : "Login"}
+                </button>
+
+                <div className="flex items-center gap-3">
+                  <div className="h-px flex-1 bg-slate-200" />
+                  <span className="text-xs text-slate-500">or</span>
+                  <div className="h-px flex-1 bg-slate-200" />
+                </div>
+
+                {/* Social row (identical look) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button type="button" onClick={handleOAuthGoogle} className={socialBtnClass}>
+                    <img
+                      alt="Google"
+                      src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+                      className="h-5 w-5"
+                    />
+                    Continue with Google
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleOAuthMicrosoft}
+                    className={socialBtnClass}
+                  >
+                    <img
+                      alt="Microsoft"
+                      src="https://static-00.iconduck.com/assets.00/microsoft-azure-icon-2048x2048-1p4mxwrt.png"
+                      className="h-5 w-5"
+                    />
+                    Continue with Microsoft
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setMode("signup")}
+                  className="block w-full text-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 font-medium text-slate-800 hover:bg-slate-50"
+                >
+                  Create Account
+                </button>
+
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  By continuing you agree to our{" "}
+                  <Link to="/legal/terms" className="text-slate-700 underline decoration-slate-300 hover:text-slate-900">
+                    Terms
+                  </Link>{" "}
+                  and{" "}
+                  <Link to="/legal/privacy" className="text-slate-700 underline decoration-slate-300 hover:text-slate-900">
+                    Privacy Policy
+                  </Link>
+                  . {region === "wa" ? "AU/ECOWAS‑aligned practices apply." : "ESIGN/UETA applies."}
+                </p>
+              </form>
+            ) : (
+              <form onSubmit={handleSignup} className="space-y-4">
+                <div>
+                  <label htmlFor="fullName" className="block text-sm font-medium text-slate-700">
+                    Full name
+                  </label>
+                  <input
+                    id="fullName"
+                    type="text"
+                    required
+                    className="mt-1 block w-full rounded-lg border-slate-300 focus:border-purple-600 focus:ring-purple-600"
+                    placeholder="Jane Doe"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="newEmail" className="block text-sm font-medium text-slate-700">
+                    Work email
+                  </label>
+                  <input
+                    id="newEmail"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    className="mt-1 block w-full rounded-lg border-slate-300 focus:border-purple-600 focus:ring-purple-600"
+                    placeholder="you@company.com"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value.trim())}
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="newPassword" className="block text-sm font-medium text-slate-700">
+                    Password
+                  </label>
+                  <input
+                    id="newPassword"
+                    type="password"
+                    autoComplete="new-password"
+                    required
+                    minLength={8}
+                    className="mt-1 block w-full rounded-lg border-slate-300 focus:border-purple-600 focus:ring-purple-600"
+                    placeholder="At least 8 characters"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-700">
+                    Confirm password
+                  </label>
+                  <input
+                    id="confirmPassword"
+                    type="password"
+                    autoComplete="new-password"
+                    required
+                    minLength={8}
+                    className="mt-1 block w-full rounded-lg border-slate-300 focus:border-purple-600 focus:ring-purple-600"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                  />
+                </div>
+
+                <label className="mt-2 inline-flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={agree}
+                    onChange={(e) => setAgree(e.target.checked)}
+                    className="rounded border-slate-300"
+                  />
+                  I agree to the{" "}
+                  <Link to="/legal/terms" className="underline decoration-slate-300 hover:text-slate-900">
+                    Terms
+                  </Link>{" "}
+                  and{" "}
+                  <Link to="/legal/privacy" className="underline decoration-slate-300 hover:text-slate-900">
+                    Privacy Policy
+                  </Link>
+                  .
+                </label>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full rounded-lg bg-purple-600 px-4 py-2.5 font-semibold text-white shadow-sm hover:bg-purple-700 disabled:opacity-60"
+                >
+                  {loading ? "Creating account…" : "Create Account"}
+                </button>
+
+                <div className="flex items-center gap-3">
+                  <div className="h-px flex-1 bg-slate-200" />
+                  <span className="text-xs text-slate-500">or</span>
+                  <div className="h-px flex-1 bg-slate-200" />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button type="button" onClick={handleOAuthGoogle} className={socialBtnClass}>
+                    <img
+                      alt="Google"
+                      src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+                      className="h-5 w-5"
+                    />
+                    Continue with Google
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleOAuthMicrosoft}
+                    className={socialBtnClass}
+                  >
+                    <img
+                      alt="Microsoft"
+                      src="https://static-00.iconduck.com/assets.00/microsoft-azure-icon-2048x2048-1p4mxwrt.png"
+                      className="h-5 w-5"
+                    />
+                    Continue with Microsoft
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setMode("login")}
+                  className="block w-full text-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 font-medium text-slate-800 hover:bg-slate-50"
+                >
+                  Back to Login
+                </button>
+              </form>
+            )}
+          </div>
+
+          {/* Trust markers */}
+          <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500">
+            <span className="inline-flex items-center gap-2">🔒 AES‑256 at rest</span>
+            <span className="inline-flex items-center gap-2">✅ ESIGN/UETA</span>
+            <span className="inline-flex items-center gap-2">🇪🇺 eIDAS ready</span>
+            <span className="inline-flex items-center gap-2">🌍 AU/ECOWAS aligned</span>
           </div>
         </div>
       </div>
-    </>
+
+      {/* Right: brand panel */}
+      <div className="hidden lg:block relative">
+        <div className="absolute inset-0 bg-gradient-to-br from-purple-600 via-indigo-600 to-blue-600" />
+        <div className="absolute inset-0 opacity-10 mix-blend-overlay bg-[radial-gradient(circle_at_20%_20%,white,transparent_30%),radial-gradient(circle_at_80%_30%,white,transparent_25%),radial-gradient(circle_at_10%_80%,white,transparent_25%)]" />
+        <div className="relative h-full flex items-center justify-center p-16 text-white">
+          <div className="max-w-lg">
+            <div className="text-4xl font-semibold leading-tight">
+              Securely sign & automate agreements
+            </div>
+            <p className="mt-4 text-indigo-100">
+              Faster workflows, tamper‑proof audit trails, and global compliance—built in.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
