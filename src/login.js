@@ -1,4 +1,3 @@
-
 // // src/login.jsx
 // import React, { useMemo, useState, useEffect } from "react";
 // import axios from "axios";
@@ -41,26 +40,114 @@
 //     localStorage.setItem(REGION_KEY, region);
 //   }, [region]);
 
+//   // Normalize the backend origin for postMessage origin checks
+//   const BACKEND_ORIGIN = useMemo(() => {
+//     try {
+//       return new URL(BASE_URL).origin;
+//     } catch {
+//       // If BASE_URL is already an origin
+//       return BASE_URL;
+//     }
+//   }, []);
+
 //   /* -----------------------------------------------------------------------
 //    * SOCIAL BUTTON SIZE / LOOK CONTROL
 //    * - Both Google and Microsoft share this exact class string.
 //    * - Width: `w-full` makes each button fill its grid cell.
 //    * - Height / padding: controlled by `py-2.5` and `h-[44px]`.
-//    * - Font size: inherit (you can add `text-sm` if you want smaller text).
 //    * - Icon size: see <img className="h-5 w-5" /> inside each button.
 //    * --------------------------------------------------------------------- */
 //   const socialBtnClass =
 //     "inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 " +
 //     "bg-white px-4 py-2.5 text-slate-700 hover:bg-slate-50 w-full h-[44px]";
 
-//   // Google OAuth (server-side redirect flow; matches routes/auth.js rewrite)
-//   const handleOAuthGoogle = () => {
-//     window.location.href = `${BASE_URL}/auth/google`; // change if your start path differs
+//   /* -----------------------------------------------------------------------
+//    * GOOGLE OAUTH — STEP 2: CAPTURE THE ID TOKEN & EXCHANGE IT
+//    * --------------------------------------------------------------------- */
+
+//   // 2b. Exchange a Google ID token for your app's JWT
+//   const exchangeGoogleCredential = async (credential) => {
+//     if (!credential) return;
+//     setLoading(true);
+//     setErr("");
+//     try {
+//       const { data } = await axios.post(`${BASE_URL}/auth/google`, {
+//         credential,
+//         // optional: include region so the backend can set regional prefs
+//         region,
+//       });
+
+//       if (data?.token) {
+//         localStorage.setItem("token", data.token);
+//         if (data.user) localStorage.setItem("user", JSON.stringify(data.user));
+//       }
+//       navigate("/admin");
+//     } catch (e) {
+//       const msg =
+//         e?.response?.data?.error ||
+//         e?.response?.data?.message ||
+//         "Google sign‑in failed. Please try again.";
+//       setErr(msg);
+//     } finally {
+//       setLoading(false);
+//     }
 //   };
 
-//   // Microsoft OAuth (same visual style, placeholder route)
+//   // 2a(i). Listen for a postMessage from the popup (recommended path)
+//   useEffect(() => {
+//     const onMsg = (ev) => {
+//       // Only accept messages from your backend origin
+//       if (!ev?.data || ev.origin !== BACKEND_ORIGIN) return;
+//       if (ev.data.type !== "elex:google") return;
+
+//       const credential = ev.data.credential || ev.data.id_token;
+//       if (credential) {
+//         exchangeGoogleCredential(credential);
+//       }
+//     };
+//     window.addEventListener("message", onMsg);
+//     return () => window.removeEventListener("message", onMsg);
+//     // eslint-disable-next-line react-hooks/exhaustive-deps
+//   }, [BACKEND_ORIGIN, region]);
+
+//   // 2a(ii). Hash fallback: if backend redirected current tab with #credential=...
+//   useEffect(() => {
+//     const hash = window.location.hash || "";
+//     if (hash.includes("credential=") || hash.includes("id_token=")) {
+//       const params = new URLSearchParams(hash.replace(/^#/, ""));
+//       const cred = params.get("credential") || params.get("id_token");
+//       if (cred) {
+//         // Clean the URL before exchanging
+//         try {
+//           window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+//         } catch {}
+//         exchangeGoogleCredential(cred);
+//       }
+//     }
+//     // eslint-disable-next-line react-hooks/exhaustive-deps
+//   }, [region]);
+
+//   // Start Google OAuth in a popup (better UX; if blocked, fall back to full redirect)
+//   const handleOAuthGoogle = () => {
+//     const w = 480;
+//     const h = 640;
+//     const left = window.screenX + (window.outerWidth - w) / 2;
+//     const top = window.screenY + (window.outerHeight - h) / 2;
+//     const features = `popup=yes,width=${w},height=${h},left=${left},top=${top}`;
+//     const url = `${BASE_URL}/auth/google`;
+
+//     const popup = window.open(url, "elex-google", features);
+//     if (popup) {
+//       popup.focus();
+//     } else {
+//       // if the browser blocked the popup, just redirect the full tab
+//       window.location.href = url;
+//     }
+//   };
+
+//   // Microsoft OAuth (placeholder; style & size match Google)
 //   const handleOAuthMicrosoft = () => {
-//     window.location.href = `${BASE_URL}/auth/microsoft`; // update if you use a different route
+//     window.location.href = `${BASE_URL}/auth/microsoft`; // update when you wire MS
 //   };
 
 //   const handleLogin = async (e) => {
@@ -544,43 +631,30 @@ export default function Login() {
     localStorage.setItem(REGION_KEY, region);
   }, [region]);
 
-  // Normalize the backend origin for postMessage origin checks
   const BACKEND_ORIGIN = useMemo(() => {
     try {
       return new URL(BASE_URL).origin;
     } catch {
-      // If BASE_URL is already an origin
       return BASE_URL;
     }
   }, []);
 
   /* -----------------------------------------------------------------------
-   * SOCIAL BUTTON SIZE / LOOK CONTROL
-   * - Both Google and Microsoft share this exact class string.
-   * - Width: `w-full` makes each button fill its grid cell.
-   * - Height / padding: controlled by `py-2.5` and `h-[44px]`.
-   * - Icon size: see <img className="h-5 w-5" /> inside each button.
+   * Social button size / look (shared by Google & Microsoft)
    * --------------------------------------------------------------------- */
   const socialBtnClass =
     "inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 " +
     "bg-white px-4 py-2.5 text-slate-700 hover:bg-slate-50 w-full h-[44px]";
 
   /* -----------------------------------------------------------------------
-   * GOOGLE OAUTH — STEP 2: CAPTURE THE ID TOKEN & EXCHANGE IT
+   * GOOGLE — exchange ID token when popup posts it
    * --------------------------------------------------------------------- */
-
-  // 2b. Exchange a Google ID token for your app's JWT
   const exchangeGoogleCredential = async (credential) => {
     if (!credential) return;
     setLoading(true);
     setErr("");
     try {
-      const { data } = await axios.post(`${BASE_URL}/auth/google`, {
-        credential,
-        // optional: include region so the backend can set regional prefs
-        region,
-      });
-
+      const { data } = await axios.post(`${BASE_URL}/auth/google`, { credential, region });
       if (data?.token) {
         localStorage.setItem("token", data.token);
         if (data.user) localStorage.setItem("user", JSON.stringify(data.user));
@@ -597,16 +671,27 @@ export default function Login() {
     }
   };
 
-  // 2a(i). Listen for a postMessage from the popup (recommended path)
+  // Listen for popup messages from your backend (Google or Microsoft)
   useEffect(() => {
     const onMsg = (ev) => {
-      // Only accept messages from your backend origin
-      if (!ev?.data || ev.origin !== BACKEND_ORIGIN) return;
-      if (ev.data.type !== "elex:google") return;
+      if (ev.origin !== BACKEND_ORIGIN) return; // security: only trust your API origin
+      const { type } = ev.data || {};
 
-      const credential = ev.data.credential || ev.data.id_token;
-      if (credential) {
-        exchangeGoogleCredential(credential);
+      // Google flow (server returns an ID token for client-side exchange)
+      if (type === "elex:google") {
+        const credential = ev.data?.credential || ev.data?.id_token;
+        return exchangeGoogleCredential(credential);
+      }
+
+      // Microsoft flow (server already exchanged code -> returns your app JWT)
+      if (type === "elex:microsoft") {
+        const token = ev.data?.token;
+        const user = ev.data?.user;
+        if (token) {
+          localStorage.setItem("token", token);
+          if (user) localStorage.setItem("user", JSON.stringify(user));
+          navigate("/admin");
+        }
       }
     };
     window.addEventListener("message", onMsg);
@@ -614,14 +699,13 @@ export default function Login() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [BACKEND_ORIGIN, region]);
 
-  // 2a(ii). Hash fallback: if backend redirected current tab with #credential=...
+  // Hash fallback for Google (if your backend redirects with #credential=...)
   useEffect(() => {
     const hash = window.location.hash || "";
     if (hash.includes("credential=") || hash.includes("id_token=")) {
       const params = new URLSearchParams(hash.replace(/^#/, ""));
       const cred = params.get("credential") || params.get("id_token");
       if (cred) {
-        // Clean the URL before exchanging
         try {
           window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
         } catch {}
@@ -631,27 +715,25 @@ export default function Login() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [region]);
 
-  // Start Google OAuth in a popup (better UX; if blocked, fall back to full redirect)
+  // Open Google popup
   const handleOAuthGoogle = () => {
-    const w = 480;
-    const h = 640;
+    const w = 480, h = 640;
     const left = window.screenX + (window.outerWidth - w) / 2;
     const top = window.screenY + (window.outerHeight - h) / 2;
-    const features = `popup=yes,width=${w},height=${h},left=${left},top=${top}`;
-    const url = `${BASE_URL}/auth/google`;
-
-    const popup = window.open(url, "elex-google", features);
-    if (popup) {
-      popup.focus();
-    } else {
-      // if the browser blocked the popup, just redirect the full tab
-      window.location.href = url;
-    }
+    const url = `${BASE_URL}/auth/google`; // server serves a tiny page that posts the credential
+    const popup = window.open(url, "elex-google", `popup=yes,width=${w},height=${h},left=${left},top=${top}`);
+    if (!popup) window.location.href = url;
   };
 
-  // Microsoft OAuth (placeholder; style & size match Google)
+  // Open Microsoft popup (passes the app origin in state for secure postMessage)
   const handleOAuthMicrosoft = () => {
-    window.location.href = `${BASE_URL}/auth/microsoft`; // update when you wire MS
+    const w = 520, h = 700;
+    const left = window.screenX + (window.outerWidth - w) / 2;
+    const top = window.screenY + (window.outerHeight - h) / 2;
+    const appOrigin = encodeURIComponent(window.location.origin);
+    const url = `${BASE_URL}/auth/microsoft?origin=${appOrigin}`;
+    const popup = window.open(url, "elex-microsoft", `popup=yes,width=${w},height=${h},left=${left},top=${top}`);
+    if (!popup) window.location.href = url;
   };
 
   const handleLogin = async (e) => {
@@ -680,18 +762,9 @@ export default function Login() {
     e.preventDefault();
     setErr("");
 
-    if (!agree) {
-      setErr("Please accept the Terms and Privacy Policy to continue.");
-      return;
-    }
-    if (!newPassword || newPassword.length < 8) {
-      setErr("Password must be at least 8 characters.");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setErr("Passwords do not match.");
-      return;
-    }
+    if (!agree) return setErr("Please accept the Terms and Privacy Policy to continue.");
+    if (!newPassword || newPassword.length < 8) return setErr("Password must be at least 8 characters.");
+    if (newPassword !== confirmPassword) return setErr("Passwords do not match.");
 
     setLoading(true);
     try {
@@ -759,9 +832,7 @@ export default function Login() {
               type="button"
               onClick={() => setRegion("global")}
               className={`px-4 py-2 rounded-full text-sm font-medium transition ${
-                region === "global"
-                  ? "bg-slate-900 text-white shadow"
-                  : "text-slate-700 hover:text-slate-900"
+                region === "global" ? "bg-slate-900 text-white shadow" : "text-slate-700 hover:text-slate-900"
               }`}
             >
               🌐 Global
@@ -770,21 +841,15 @@ export default function Login() {
               type="button"
               onClick={() => setRegion("wa")}
               className={`px-4 py-2 rounded-full text-sm font-medium transition ${
-                region === "wa"
-                  ? "bg-slate-900 text-white shadow"
-                  : "text-slate-700 hover:text-slate-900"
+                region === "wa" ? "bg-slate-900 text-white shadow" : "text-slate-700 hover:text-slate-900"
               }`}
             >
               🛡️ West Africa
             </button>
           </div>
-          {region === "wa" ? (
-            <p className="mt-2 text-xs text-slate-500">
-              AU/ECOWAS‑aligned controls. Local date formats apply (e.g. DD/MM/YYYY).
-            </p>
-          ) : (
-            <p className="mt-2 text-xs text-slate-500">ESIGN/UETA and eIDAS‑ready workflows.</p>
-          )}
+          <p className="mt-2 text-xs text-slate-500">
+            {region === "wa" ? "AU/ECOWAS‑aligned controls. Local date formats apply (e.g. DD/MM/YYYY)." : "ESIGN/UETA and eIDAS‑ready workflows."}
+          </p>
 
           {/* Card */}
           <div className="mt-6 rounded-2xl border border-slate-200 bg-white/70 backdrop-blur p-6 shadow-sm">
@@ -794,9 +859,7 @@ export default function Login() {
                 type="button"
                 onClick={() => setMode("login")}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
-                  mode === "login"
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-600 hover:text-slate-900"
+                  mode === "login" ? "bg-slate-900 text-white" : "text-slate-600 hover:text-slate-900"
                 }`}
               >
                 Login
@@ -805,9 +868,7 @@ export default function Login() {
                 type="button"
                 onClick={() => setMode("signup")}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
-                  mode === "signup"
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-600 hover:text-slate-900"
+                  mode === "signup" ? "bg-slate-900 text-white" : "text-slate-600 hover:text-slate-900"
                 }`}
               >
                 Create Account
@@ -823,9 +884,7 @@ export default function Login() {
             {mode === "login" ? (
               <form onSubmit={handleLogin} className="space-y-4">
                 <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-slate-700">
-                    Email
-                  </label>
+                  <label htmlFor="email" className="block text-sm font-medium text-slate-700">Email</label>
                   <input
                     id="email"
                     type="email"
@@ -839,9 +898,7 @@ export default function Login() {
                 </div>
 
                 <div>
-                  <label htmlFor="password" className="block text-sm font-medium text-slate-700">
-                    Password
-                  </label>
+                  <label htmlFor="password" className="block text-sm font-medium text-slate-700">Password</label>
                   <div className="mt-1 relative">
                     <input
                       id="password"
@@ -888,26 +945,13 @@ export default function Login() {
                   <div className="h-px flex-1 bg-slate-200" />
                 </div>
 
-                {/* Social row (identical look) */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <button type="button" onClick={handleOAuthGoogle} className={socialBtnClass}>
-                    <img
-                      alt="Google"
-                      src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-                      className="h-5 w-5"
-                    />
+                    <img alt="Google" src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="h-5 w-5" />
                     Continue with Google
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleOAuthMicrosoft}
-                    className={socialBtnClass}
-                  >
-                    <img
-                      alt="Microsoft"
-                      src="https://static-00.iconduck.com/assets.00/microsoft-azure-icon-2048x2048-1p4mxwrt.png"
-                      className="h-5 w-5"
-                    />
+                  <button type="button" onClick={handleOAuthMicrosoft} className={socialBtnClass}>
+                    <img alt="Microsoft" src="https://static-00.iconduck.com/assets.00/microsoft-azure-icon-2048x2048-1p4mxwrt.png" className="h-5 w-5" />
                     Continue with Microsoft
                   </button>
                 </div>
@@ -922,22 +966,16 @@ export default function Login() {
 
                 <p className="text-[11px] text-slate-500 leading-relaxed">
                   By continuing you agree to our{" "}
-                  <Link to="/legal/terms" className="text-slate-700 underline decoration-slate-300 hover:text-slate-900">
-                    Terms
-                  </Link>{" "}
+                  <Link to="/legal/terms" className="text-slate-700 underline decoration-slate-300 hover:text-slate-900">Terms</Link>{" "}
                   and{" "}
-                  <Link to="/legal/privacy" className="text-slate-700 underline decoration-slate-300 hover:text-slate-900">
-                    Privacy Policy
-                  </Link>
-                  . {region === "wa" ? "AU/ECOWAS‑aligned practices apply." : "ESIGN/UETA applies."}
+                  <Link to="/legal/privacy" className="text-slate-700 underline decoration-slate-300 hover:text-slate-900">Privacy Policy</Link>.
+                  {region === "wa" ? " AU/ECOWAS‑aligned practices apply." : " ESIGN/UETA applies."}
                 </p>
               </form>
             ) : (
               <form onSubmit={handleSignup} className="space-y-4">
                 <div>
-                  <label htmlFor="fullName" className="block text-sm font-medium text-slate-700">
-                    Full name
-                  </label>
+                  <label htmlFor="fullName" className="block text-sm font-medium text-slate-700">Full name</label>
                   <input
                     id="fullName"
                     type="text"
@@ -950,9 +988,7 @@ export default function Login() {
                 </div>
 
                 <div>
-                  <label htmlFor="newEmail" className="block text-sm font-medium text-slate-700">
-                    Work email
-                  </label>
+                  <label htmlFor="newEmail" className="block text-sm font-medium text-slate-700">Work email</label>
                   <input
                     id="newEmail"
                     type="email"
@@ -966,9 +1002,7 @@ export default function Login() {
                 </div>
 
                 <div>
-                  <label htmlFor="newPassword" className="block text-sm font-medium text-slate-700">
-                    Password
-                  </label>
+                  <label htmlFor="newPassword" className="block text-sm font-medium text-slate-700">Password</label>
                   <input
                     id="newPassword"
                     type="password"
@@ -983,9 +1017,7 @@ export default function Login() {
                 </div>
 
                 <div>
-                  <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-700">
-                    Confirm password
-                  </label>
+                  <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-700">Confirm password</label>
                   <input
                     id="confirmPassword"
                     type="password"
@@ -1006,14 +1038,9 @@ export default function Login() {
                     className="rounded border-slate-300"
                   />
                   I agree to the{" "}
-                  <Link to="/legal/terms" className="underline decoration-slate-300 hover:text-slate-900">
-                    Terms
-                  </Link>{" "}
+                  <Link to="/legal/terms" className="underline decoration-slate-300 hover:text-slate-900">Terms</Link>{" "}
                   and{" "}
-                  <Link to="/legal/privacy" className="underline decoration-slate-300 hover:text-slate-900">
-                    Privacy Policy
-                  </Link>
-                  .
+                  <Link to="/legal/privacy" className="underline decoration-slate-300 hover:text-slate-900">Privacy Policy</Link>.
                 </label>
 
                 <button
@@ -1032,23 +1059,11 @@ export default function Login() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <button type="button" onClick={handleOAuthGoogle} className={socialBtnClass}>
-                    <img
-                      alt="Google"
-                      src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-                      className="h-5 w-5"
-                    />
+                    <img alt="Google" src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="h-5 w-5" />
                     Continue with Google
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleOAuthMicrosoft}
-                    className={socialBtnClass}
-                  >
-                    <img
-                      alt="Microsoft"
-                      src="https://static-00.iconduck.com/assets.00/microsoft-azure-icon-2048x2048-1p4mxwrt.png"
-                      className="h-5 w-5"
-                    />
+                  <button type="button" onClick={handleOAuthMicrosoft} className={socialBtnClass}>
+                    <img alt="Microsoft" src="https://static-00.iconduck.com/assets.00/microsoft-azure-icon-2048x2048-1p4mxwrt.png" className="h-5 w-5" />
                     Continue with Microsoft
                   </button>
                 </div>
@@ -1080,9 +1095,7 @@ export default function Login() {
         <div className="absolute inset-0 opacity-10 mix-blend-overlay bg-[radial-gradient(circle_at_20%_20%,white,transparent_30%),radial-gradient(circle_at_80%_30%,white,transparent_25%),radial-gradient(circle_at_10%_80%,white,transparent_25%)]" />
         <div className="relative h-full flex items-center justify-center p-16 text-white">
           <div className="max-w-lg">
-            <div className="text-4xl font-semibold leading-tight">
-              Securely sign & automate agreements
-            </div>
+            <div className="text-4xl font-semibold leading-tight">Securely sign & automate agreements</div>
             <p className="mt-4 text-indigo-100">
               Faster workflows, tamper‑proof audit trails, and global compliance—built in.
             </p>
