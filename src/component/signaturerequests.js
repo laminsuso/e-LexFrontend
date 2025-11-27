@@ -52,7 +52,7 @@ export default function SignatureRequests({ currentEmail,requests, setRequests, 
           Recent signature requests
         </h2>
 
-        {loading.needsignLoading == true ? (
+        {loading.needsignLoading === true ? (
           <div class="h-[250px] flex justify-center items-center">
             <div class="op-loading op-loading-infinity w-[4rem] text-neutral"></div>
           </div>
@@ -66,7 +66,7 @@ export default function SignatureRequests({ currentEmail,requests, setRequests, 
               <div>Action</div>
             </div>
 
-            {paginatedRequests?.length == 0 ? (
+            {paginatedRequests?.length === 0 ? (
               <>
                 <div className="h-[200px] flex items-center justify-center text-gray-500">
                   No signature requests found
