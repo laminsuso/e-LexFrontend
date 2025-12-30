@@ -7,14 +7,9 @@
 // import Login from "./login";
 // import Pricing from "./pricing";
 // import AdminLayout from "./component/adminheader";
-// import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
+// import { PayPalScriptProvider } from "@paypal/react-paypal-js";
 // import { loadStripe } from "@stripe/stripe-js";
-// import {
-//   PaymentElement,
-//   Elements,
-//   useStripe,
-//   useElements,
-// } from "@stripe/react-stripe-js";
+// import { Elements } from "@stripe/react-stripe-js";
 // import DashboardPage from "./dashboard";
 // import SignYourselfPage from "./signupyourself";
 // import RequestSignaturesPage from "./requestsignature";
@@ -49,6 +44,9 @@
 // import TermsPage from "./pages/legal/TermsPage";
 // import PrivacyPage from "./pages/legal/PrivacyPage";
 
+// /* NEW: Documents layout with search */
+// import DocumentsLayout from "./component/DocumentsLayout"; // <--- create this
+
 // const stripePromise = loadStripe(
 //   "pk_test_51OwuO4LcfLzcwwOYdssgGfUSfOgWT1LwO6ewi3CEPewY7WEL9ATqH6WJm3oAcLDA3IgUvVYLVEBMIEu0d8fUwhlw009JwzEYmV"
 // );
@@ -64,8 +62,22 @@
 //   (err) => {
 //     const status = err?.response?.status;
 
-//     if (status === 494 || status === 401 || status === 403) {
-//       // restore owner token if a signer session was active
+//     // read backend error message if present
+//     const msg =
+//       err?.response?.data?.error ||
+//       err?.response?.data?.message ||
+//       "";
+
+//     const isTokenProblem =
+//       status === 401 &&
+//       (msg.toLowerCase().includes("token") ||
+//         msg.toLowerCase().includes("unauthorized") ||
+//         msg.toLowerCase().includes("expired") ||
+//         msg.toLowerCase().includes("invalid"));
+
+//     // ✅ Only force logout for real token failures
+//     if (isTokenProblem || status === 494) {
+//       // restore owner token if signer session was active
 //       if (localStorage.getItem("signing_session")) {
 //         const backup = localStorage.getItem("token_backup");
 //         if (backup) localStorage.setItem("token", backup);
@@ -75,7 +87,7 @@
 //         localStorage.removeItem("token");
 //       }
 
-//       // Use window.location (not the restricted global `location`)
+//       // Don't kick user out if they're already on login/register
 //       if (typeof window !== "undefined") {
 //         const loc = window.location;
 //         if (loc && !loc.pathname.includes("/join")) {
@@ -87,6 +99,7 @@
 //     return Promise.reject(err);
 //   }
 // );
+
 
 // const router = createBrowserRouter([
 //   {
@@ -151,6 +164,8 @@
 //       </PayPalScriptProvider>
 //     ),
 //   },
+
+//   // ================== ADMIN AREA ==================
 //   {
 //     path: "/admin",
 //     element: <AdminLayout />,
@@ -179,7 +194,6 @@
 //         element: <Preferences />,
 //       },
 //       {
-//         // FIXED: make this a relative child path so it renders in AdminLayout's Outlet
 //         path: "profile",
 //         element: <Profile />,
 //       },
@@ -195,30 +209,21 @@
 //         path: "template/manage",
 //         element: <ManageTemplate />,
 //       },
+
+//       // ======== NEW: documents layout with shared search ========
 //       {
-//         path: "documents/need-sign",
-//         element: <NeedYourSign />,
+//         path: "documents",
+//         element: <DocumentsLayout />, // renders search bar + Outlet
+//         children: [
+//           { path: "need-sign", element: <NeedYourSign /> },
+//           { path: "in-progress", element: <Inprogress /> },
+//           { path: "completed", element: <Completed /> },
+//           { path: "drafts", element: <Draftsdocs /> },
+//           { path: "declined", element: <DeclinedComponent /> },
+//           { path: "expired", element: <ExpiredComponent /> },
+//         ],
 //       },
-//       {
-//         path: "documents/in-progress",
-//         element: <Inprogress />,
-//       },
-//       {
-//         path: "documents/completed",
-//         element: <Completed />,
-//       },
-//       {
-//         path: "documents/drafts",
-//         element: <Draftsdocs />,
-//       },
-//       {
-//         path: "documents/declined",
-//         element: <DeclinedComponent />,
-//       },
-//       {
-//         path: "documents/expired",
-//         element: <ExpiredComponent />,
-//       },
+
 //       {
 //         path: "contactbook",
 //         element: <ContactBooks />,
@@ -230,9 +235,6 @@
 // const root = ReactDOM.createRoot(document.getElementById("root"));
 // root.render(<RouterProvider router={router} />);
 
-// // If you want to start measuring performance in your app, pass a function
-// // to log results (for example: reportWebVitals(console.log))
-// // or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
 // reportWebVitals();
 
 import React from "react";
@@ -259,9 +261,7 @@ import Profile from "./profile";
 import EditTemplate from "./edittemplate";
 import ManageTemplate from "./managetemplates";
 import NeedYourSign from "./needyoursign";
-import SignRequests from "./requests";
 import Completed from "./completed";
-import Drafts from "./drafts";
 import DeclinedComponent from "./declined";
 import ExpiredComponent from "./expired";
 import ContactBooks from "./contactbook";
@@ -282,11 +282,13 @@ import TermsPage from "./pages/legal/TermsPage";
 import PrivacyPage from "./pages/legal/PrivacyPage";
 
 /* NEW: Documents layout with search */
-import DocumentsLayout from "./component/DocumentsLayout"; // <--- create this
+import DocumentsLayout from "./component/DocumentsLayout";
 
 const stripePromise = loadStripe(
   "pk_test_51OwuO4LcfLzcwwOYdssgGfUSfOgWT1LwO6ewi3CEPewY7WEL9ATqH6WJm3oAcLDA3IgUvVYLVEBMIEu0d8fUwhlw009JwzEYmV"
 );
+
+// -------------------- Axios interceptors --------------------
 
 axios.interceptors.request.use((config) => {
   const t = localStorage.getItem("token");
@@ -299,22 +301,55 @@ axios.interceptors.response.use(
   (err) => {
     const status = err?.response?.status;
 
-    if (status === 494 || status === 401 || status === 403) {
-      // restore owner token if a signer session was active
+    // message from backend (if any)
+    const msg =
+      (err?.response?.data?.error ||
+        err?.response?.data?.message ||
+        "") + "";
+
+    const lower = msg.toLowerCase();
+
+    // Only treat these as true auth failures
+    const isTokenProblem =
+      status === 401 &&
+      (lower.includes("token") ||
+        lower.includes("unauthorized") ||
+        lower.includes("expired") ||
+        lower.includes("invalid"));
+
+    // Some of your system uses 494 as "session invalid"
+    const shouldForceLogout = isTokenProblem || status === 494;
+
+    if (shouldForceLogout) {
+      // restore owner token if signer session was active
       if (localStorage.getItem("signing_session")) {
         const backup = localStorage.getItem("token_backup");
         if (backup) localStorage.setItem("token", backup);
         localStorage.removeItem("token_backup");
         localStorage.removeItem("signing_session");
-      } else {
-        localStorage.removeItem("token");
+        // signer flow handled; do not redirect here
+        return Promise.reject(err);
       }
 
-      // Use window.location (not the restricted global `location`)
+      // clear token
+      localStorage.removeItem("token");
+
       if (typeof window !== "undefined") {
         const loc = window.location;
-        if (loc && !loc.pathname.includes("/join")) {
-          loc.replace("/join");
+        const path = loc?.pathname || "/";
+        const search = loc?.search || "";
+        const hash = loc?.hash || "";
+
+        // ✅ Fix 2: If they are on /pricing, keep them on the upgrade flow
+        // redirect to /join?next=/pricing (or current full path)
+        const currentFullPath = `${path}${search}${hash}`;
+        const next = encodeURIComponent(
+          path.startsWith("/pricing") ? "/pricing" : currentFullPath
+        );
+
+        // Don't redirect if already on join
+        if (!path.includes("/join")) {
+          loc.replace(`/join?next=${next}`);
         }
       }
     }
@@ -323,53 +358,21 @@ axios.interceptors.response.use(
   }
 );
 
-const router = createBrowserRouter([
-  {
-    path: "/",
-    element: <App />,
-  },
-  {
-    path: "/join",
-    element: <Login />,
-  },
-  {
-    path: "/contact",
-    element: <Contact />,
-  },
-  {
-    path: "/careers",
-    element: <CareersPage />,
-  },
-  {
-    path: "/about",
-    element: <AboutPage />,
-  },
-  {
-    path: "/forgetpassword",
-    element: <ForgotPassword />,
-  },
-  {
-    path: "/pricing",
-    element: <Pricing />,
-  },
-  {
-    path: "/publicprofile",
-    element: <PublicProfile />,
-  },
-  {
-    path: "/changepassword/:email",
-    element: <ChangePassword />,
-  },
+// -------------------- Router --------------------
 
-  /* NEW: Legal routes */
-  {
-    path: "/legal/terms",
-    element: <TermsPage />,
-  },
-  {
-    path: "/legal/privacy",
-    element: <PrivacyPage />,
-  },
+const router = createBrowserRouter([
+  { path: "/", element: <App /> },
+  { path: "/join", element: <Login /> },
+  { path: "/contact", element: <Contact /> },
+  { path: "/careers", element: <CareersPage /> },
+  { path: "/about", element: <AboutPage /> },
+  { path: "/forgetpassword", element: <ForgotPassword /> },
+  { path: "/pricing", element: <Pricing /> },
+  { path: "/publicprofile", element: <PublicProfile /> },
+  { path: "/changepassword/:email", element: <ChangePassword /> },
+
+  { path: "/legal/terms", element: <TermsPage /> },
+  { path: "/legal/privacy", element: <PrivacyPage /> },
 
   {
     path: "/subscription",
@@ -395,47 +398,20 @@ const router = createBrowserRouter([
       { index: true, element: <DashboardPage /> },
       { path: "sign-yourself", element: <SignYourselfPage /> },
       { path: "request-signatures", element: <RequestSignaturesPage /> },
-      {
-        path: "request-signatures/sign-document/:documentId",
-        element: <SignDocumentPage />,
-      },
-      {
-        path: "view-pdf/sign-document/:documentId",
-        element: <ViewPdf />,
-      },
-      {
-        path: "template/create",
-        element: <CreateTemplate />,
-      },
-      {
-        path: "settings/signatures",
-        element: <Signatures />,
-      },
-      {
-        path: "settings/preferences",
-        element: <Preferences />,
-      },
-      {
-        path: "profile",
-        element: <Profile />,
-      },
-      {
-        path: "edittemplate/:documentId",
-        element: <EditTemplate />,
-      },
-      {
-        path: "usetemplate/:documentId",
-        element: <UseTemplate />,
-      },
-      {
-        path: "template/manage",
-        element: <ManageTemplate />,
-      },
+      { path: "request-signatures/sign-document/:documentId", element: <SignDocumentPage /> },
+      { path: "view-pdf/sign-document/:documentId", element: <ViewPdf /> },
+      { path: "template/create", element: <CreateTemplate /> },
+      { path: "settings/signatures", element: <Signatures /> },
+      { path: "settings/preferences", element: <Preferences /> },
+      { path: "profile", element: <Profile /> },
+      { path: "edittemplate/:documentId", element: <EditTemplate /> },
+      { path: "usetemplate/:documentId", element: <UseTemplate /> },
+      { path: "template/manage", element: <ManageTemplate /> },
 
-      // ======== NEW: documents layout with shared search ========
+      // documents layout
       {
         path: "documents",
-        element: <DocumentsLayout />, // renders search bar + Outlet
+        element: <DocumentsLayout />,
         children: [
           { path: "need-sign", element: <NeedYourSign /> },
           { path: "in-progress", element: <Inprogress /> },
@@ -446,10 +422,7 @@ const router = createBrowserRouter([
         ],
       },
 
-      {
-        path: "contactbook",
-        element: <ContactBooks />,
-      },
+      { path: "contactbook", element: <ContactBooks /> },
     ],
   },
 ]);
