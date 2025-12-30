@@ -1,185 +1,223 @@
-import axios from 'axios';
-import { useRef, useState, useEffect } from 'react';
-import { ToastContainer, toast } from 'react-toastify';
-import { BASE_URL } from './baseUrl';
+import axios from "axios";
+import React, { useRef, useState, useEffect } from "react";
+import { ToastContainer, toast } from "react-toastify";
+import { BASE_URL } from "./baseUrl";
 
 const MIN_WIDTH = 0.8;
 const MAX_WIDTH = 2.6;
 const SMOOTHING = 0.85;
 const VELOCITY_FILTER = 0.7;
 
-
 const PenIcon = ({ color }) => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-    <path d="M15.2322 5.23223L18.7682 8.76823M3 21L8.32842 19.6716L19.3284 8.67157L15.3284 4.67157L4.32843 15.6716L3 21Z"
-          stroke={color} strokeWidth="2" strokeLinecap="round"/>
+    <path
+      d="M15.2322 5.23223L18.7682 8.76823M3 21L8.32842 19.6716L19.3284 8.67157L15.3284 4.67157L4.32843 15.6716L3 21Z"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
   </svg>
 );
 
 export default function Signatures() {
-  const [signatureColor, setSignatureColor] = useState('#1a73e8');
-  const [initialsColor, setInitialsColor] = useState('#1a73e8');
-  const [loading,setLoading]=useState(true)
+  const [signatureColor, setSignatureColor] = useState("#1a73e8");
+  const [initialsColor, setInitialsColor] = useState("#1a73e8");
+  const [loading, setLoading] = useState(true);
+
   const [isDrawing, setIsDrawing] = useState(false);
-  const [lastPosition, setLastPosition] = useState({ x: 0, y: 0 });
-  
-  const [signature, setSignature] = useState(null); 
+
+  // store saved images (base64) so we can re-render them if canvas is re-setup
+  const [signature, setSignature] = useState(null);
   const [initials, setInitials] = useState(null);
-  
+
   const sigCanvasRef = useRef(null);
   const initialsCanvasRef = useRef(null);
   const currentCanvasRef = useRef(null);
 
+  const lastPointRef = useRef(null);
+  const lastTimeRef = useRef(0);
+  const lineWidthRef = useRef(MAX_WIDTH);
+
   useEffect(() => {
-   
     getProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ✅ Robust profile fetch that avoids 304 empty body issues
   const getProfile = async () => {
+    setLoading(true);
     try {
-      let token = localStorage.getItem('token');
-      let headers = {
-        headers: {
-          authorization: `Bearer ${token}`
-        },
+      const token = localStorage.getItem("token");
+      if (!token) {
+        setLoading(false);
+        toast.error("Not authenticated. Please log in again.", { containerId: "signature" });
+        return;
+      }
+
+      const fetchOnce = async () => {
+        return axios.get(`${BASE_URL}/getProfile?ts=${Date.now()}`, {
+          headers: {
+            authorization: `Bearer ${token}`,
+            "Cache-Control": "no-cache",
+            Pragma: "no-cache",
+          },
+        });
       };
-      let response = await axios.get(`${BASE_URL}/getProfile`, headers);
-      console.log("Profile data:", response.data);
 
-     setLoading(false)
-      setSignature(response.data.profile.signature);
-      setInitials(response.data.profile.initial);
+      // First attempt
+      let response = await fetchOnce();
 
-      
-      if (response.data.profile.signature) {
-        loadCanvasImage(sigCanvasRef, response.data.profile.signature);
+      // If response body is empty/undefined for any reason, retry once
+      if (!response?.data || typeof response.data !== "object") {
+        response = await fetchOnce();
       }
-      if (response.data.profile.initial) {
-        loadCanvasImage(initialsCanvasRef, response.data.profile.initial);
+
+      const profile = response?.data?.profile;
+
+      // If backend still returns null (should not after your backend fix)
+      if (!profile) {
+        setLoading(false);
+        toast.error("Profile could not be loaded. Please log out/in.", { containerId: "signature" });
+        return;
       }
+
+      // backend may store initials as `initial` (your update sends initial)
+      const sig = profile.signature || null;
+      const ini = profile.initial || profile.initials || null;
+
+      setSignature(sig);
+      setInitials(ini);
+      setLoading(false);
     } catch (e) {
-      if (e?.response?.data?.error) {
-        toast.error(e?.response?.data?.error, { containerId: "signature" });
-      } else {
-        toast.error("Something went wrong, please try again", { containerId: "signature" });
-      }
+      setLoading(false);
+      console.error("getProfile error:", e);
+      toast.error(
+        e?.response?.data?.error || "Something went wrong, please try again",
+        { containerId: "signature" }
+      );
     }
+  };
+
+  // --- Setup canvas correctly (avoid cumulative scaling) ---
+  const setupCanvas = (canvas, color) => {
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+
+    canvas.width = Math.round(rect.width * dpr);
+    canvas.height = Math.round(rect.height * dpr);
+
+    // reset transform so scale doesn't stack
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.lineWidth = MAX_WIDTH;
+    ctx.strokeStyle = color;
   };
 
   const loadCanvasImage = (canvasRef, base64String) => {
     const canvas = canvasRef.current;
     if (!canvas || !base64String) return;
 
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
+    const rect = canvas.getBoundingClientRect();
+
     const img = new Image();
     img.onload = () => {
-      const ratio = Math.min(canvas.width / img.width, canvas.height / img.height);
-      const x = (canvas.width - img.width * ratio) / 2;
-      const y = (canvas.height - img.height * ratio) / 2;
-      ctx.clearRect(0, 0, canvas.width, canvas.height); 
-      ctx.drawImage(img, x, y, img.width * ratio, img.height * ratio); 
+      const ratio = Math.min(rect.width / img.width, rect.height / img.height);
+      const w = img.width * ratio;
+      const h = img.height * ratio;
+      const x = (rect.width - w) / 2;
+      const y = (rect.height - h) / 2;
+
+      ctx.clearRect(0, 0, rect.width, rect.height);
+      ctx.drawImage(img, x, y, w, h);
     };
-    img.src = base64String; 
+    img.src = base64String;
   };
 
-  const setupCanvas = (canvas, color) => {
-    const ctx = canvas.getContext('2d');
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    
-    ctx.scale(dpr, dpr);
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = MAX_WIDTH;
-    ctx.strokeStyle = color;
-  };
-
+  // Whenever colors or loaded images change, re-setup canvases and redraw images.
   useEffect(() => {
-    if (sigCanvasRef.current) setupCanvas(sigCanvasRef.current, signatureColor);
-    if (initialsCanvasRef.current) setupCanvas(initialsCanvasRef.current, initialsColor);
-  }, [signatureColor, initialsColor]);
+    if (sigCanvasRef.current) {
+      setupCanvas(sigCanvasRef.current, signatureColor);
+      if (signature) loadCanvasImage(sigCanvasRef, signature);
+    }
+    if (initialsCanvasRef.current) {
+      setupCanvas(initialsCanvasRef.current, initialsColor);
+      if (initials) loadCanvasImage(initialsCanvasRef, initials);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signatureColor, initialsColor, signature, initials]);
 
-    const lastPointRef = useRef(null);
-    const lastTimeRef  = useRef(0);
-    const lineWidthRef = useRef(MAX_WIDTH);
+  const startDrawing = (e, canvas) => {
+    if (!canvas) return;
 
-    const startDrawing = (e, canvas /*, color unused here */) => {
-      currentCanvasRef.current = canvas;
-      const rect = canvas.getBoundingClientRect();
+    currentCanvasRef.current = canvas;
+    const rect = canvas.getBoundingClientRect();
 
-      const scaleX = canvas.width / rect.width;
-      const scaleY = canvas.height / rect.height;
+    const x = "touches" in e ? e.touches[0].clientX - rect.left : e.nativeEvent.offsetX;
+    const y = "touches" in e ? e.touches[0].clientY - rect.top : e.nativeEvent.offsetY;
 
-      const x = ('touches' in e)
-        ? (e.touches[0].clientX - rect.left) * scaleX
-        : e.nativeEvent.offsetX * scaleX;
+    lastPointRef.current = { x, y };
+    lastTimeRef.current = performance.now();
+    lineWidthRef.current = MAX_WIDTH;
 
-      const y = ('touches' in e)
-        ? (e.touches[0].clientY - rect.top) * scaleY
-        : e.nativeEvent.offsetY * scaleY;
+    setIsDrawing(true);
+  };
 
-      lastPointRef.current = { x, y };
-      lastTimeRef.current = performance.now();
-      lineWidthRef.current = MAX_WIDTH;
+  const draw = (e) => {
+    if (!isDrawing || !currentCanvasRef.current) return;
 
-      setIsDrawing(true);
-    };
+    const canvas = currentCanvasRef.current;
+    const ctx = canvas.getContext("2d");
+    const rect = canvas.getBoundingClientRect();
 
-    const draw = (e) => {
-      if (!isDrawing || !currentCanvasRef.current) return;
+    const x = "touches" in e ? e.touches[0].clientX - rect.left : e.nativeEvent.offsetX;
+    const y = "touches" in e ? e.touches[0].clientY - rect.top : e.nativeEvent.offsetY;
 
-      const canvas = currentCanvasRef.current;
-      const ctx = canvas.getContext('2d');
-      const rect = canvas.getBoundingClientRect();
+    const now = performance.now();
+    const dt = Math.max(now - lastTimeRef.current, 1);
 
-      const scaleX = canvas.width / rect.width;
-      const scaleY = canvas.height / rect.height;
+    const lp = lastPointRef.current;
+    if (!lp) return;
 
-      const x = ('touches' in e)
-        ? (e.touches[0].clientX - rect.left) * scaleX
-        : e.nativeEvent.offsetX * scaleX;
+    const dx = x - lp.x;
+    const dy = y - lp.y;
+    const dist = Math.hypot(dx, dy);
 
-      const y = ('touches' in e)
-        ? (e.touches[0].clientY - rect.top) * scaleY
-        : e.nativeEvent.offsetY * scaleY;
+    const velocity = dist / dt;
+    const targetWidth = Math.max(MAX_WIDTH / (velocity * VELOCITY_FILTER + 1), MIN_WIDTH);
+    const newWidth = lineWidthRef.current * SMOOTHING + targetWidth * (1 - SMOOTHING);
 
-      const now = performance.now();
-      const dt = Math.max(now - lastTimeRef.current, 1);
+    ctx.lineWidth = newWidth;
 
-      const lp = lastPointRef.current;
-      const dx = x - lp.x;
-      const dy = y - lp.y;
-      const dist = Math.hypot(dx, dy);
+    ctx.beginPath();
+    ctx.moveTo(lp.x, lp.y);
+    ctx.lineTo(x, y);
+    ctx.stroke();
 
-      const velocity = dist / dt;
-      const targetWidth = Math.max(MAX_WIDTH / (velocity * VELOCITY_FILTER + 1), MIN_WIDTH);
-      const newWidth = lineWidthRef.current * SMOOTHING + targetWidth * (1 - SMOOTHING);
+    lineWidthRef.current = newWidth;
+    lastPointRef.current = { x, y };
+    lastTimeRef.current = now;
+  };
 
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.lineWidth = newWidth;
-      // keep whichever color you bound in setupCanvas (signatureColor/initialsColor)
+  const stopDrawing = () => {
+    setIsDrawing(false);
+    lastPointRef.current = null;
+  };
 
-      ctx.beginPath();
-      ctx.moveTo(lp.x / scaleX, lp.y / scaleY);
-      ctx.lineTo(x / scaleX, y / scaleY);
-      ctx.stroke();
-
-      lineWidthRef.current = newWidth;
-      lastPointRef.current = { x, y };
-      lastTimeRef.current = now;
-    };
-
-
-  const clearCanvas = (canvasRef) => {
+  const clearCanvas = (canvasRef, setImageState) => {
     const canvas = canvasRef.current;
     if (canvas) {
-      const ctx = canvas.getContext('2d');
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const ctx = canvas.getContext("2d");
+      const rect = canvas.getBoundingClientRect();
+      ctx.clearRect(0, 0, rect.width, rect.height);
     }
+    if (setImageState) setImageState(null);
   };
 
   const handleImageUpload = (e, canvasRef, setCanvasImage) => {
@@ -188,52 +226,46 @@ export default function Signatures() {
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d');
-        const ratio = Math.min(canvas.width / img.width, canvas.height / img.height);
-        const x = (canvas.width - img.width * ratio) / 2;
-        const y = (canvas.height - img.height * ratio) / 2;
-        
-        ctx.clearRect(0, 0, canvas.width, canvas.height); 
-        ctx.drawImage(img, x, y, img.width * ratio, img.height * ratio); 
-
-        
-        setCanvasImage(canvas.toDataURL());
-      };
-      img.src = event.target.result;
+      setCanvasImage(event.target.result);
     };
-    reader.readAsDataURL(file); 
+    reader.readAsDataURL(file);
   };
 
   const updateSignatures = async () => {
     try {
-      let token = localStorage.getItem('token');
-      let headers = {
-        headers: {
-          authorization: `Bearer ${token}`,
-        },
-      };
-      const signatureData = sigCanvasRef.current.toDataURL();  
-      const initialsData = initialsCanvasRef.current.toDataURL(); 
-
-      console.log(signatureData)
-      console.log(initialsData);
-     
-      let response = await axios.patch(`${BASE_URL}/updateProfile`, {
-        signature: signatureData,
-        initial: initialsData
-      }, headers);
-
-      console.log("Profile updated", response.data);
-      toast.success("Profile updated successfully", { containerId: "signature" });
-    } catch (e) {
-      if (e?.response?.data?.error) {
-        toast.error(e?.response?.data?.error, { containerId: "signature" });
-      } else {
-        toast.error("Something went wrong, please try again", { containerId: "signature" });
+      const token = localStorage.getItem("token");
+      if (!token) {
+        toast.error("Not authenticated", { containerId: "signature" });
+        return;
       }
+
+      const signatureData = sigCanvasRef.current?.toDataURL();
+      const initialsData = initialsCanvasRef.current?.toDataURL();
+
+      if (!signatureData || !initialsData) {
+        toast.error("Canvas not ready yet", { containerId: "signature" });
+        return;
+      }
+
+      await axios.patch(
+        `${BASE_URL}/updateProfile`,
+        { signature: signatureData, initial: initialsData },
+        {
+          headers: {
+            authorization: `Bearer ${token}`,
+            "Cache-Control": "no-cache",
+            Pragma: "no-cache",
+          },
+        }
+      );
+
+      toast.success("Signature settings saved", { containerId: "signature" });
+    } catch (e) {
+      console.error("updateSignatures error:", e);
+      toast.error(
+        e?.response?.data?.error || "Something went wrong, please try again",
+        { containerId: "signature" }
+      );
     }
   };
 
@@ -244,108 +276,118 @@ export default function Signatures() {
       <div className="w-full bg-white rounded-[20px] min-h-[700px] flex flex-col gap-6 p-6">
         <h1 className="text-2xl font-bold">My Signature</h1>
 
-       
-        <div className="flex flex-col md:flex-row gap-6">
-          <div className="flex-1 flex flex-col gap-4">
-            <h2 className="text-lg font-semibold">Signature</h2>
-            <canvas
-              ref={sigCanvasRef}
-              className="w-full h-48 border-2 border-black rounded-[20px] touch-none"
-              onMouseDown={(e) => startDrawing(e, sigCanvasRef.current, signatureColor)}
-              onTouchStart={(e) => startDrawing(e, sigCanvasRef.current, signatureColor)}
-              onMouseMove={draw}
-              onTouchMove={draw}
-              onMouseUp={() => setIsDrawing(false)}
-              onTouchEnd={() => setIsDrawing(false)}
-              onMouseLeave={() => setIsDrawing(false)}
-            />
-            <div className="flex justify-between items-center">
-              <div className="flex gap-4">
-                <button 
-                  onClick={() => clearCanvas(sigCanvasRef)}
-                  className="text-black underline text-[16px]"
-                >
-                  Clear
-                </button>
-                <label className="text-black underline text-[16px] cursor-pointer">
-                  Upload
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => handleImageUpload(e, sigCanvasRef, setSignature)}
-                  />
-                </label>
+        {loading ? (
+          <div className="h-[250px] flex justify-center items-center">
+            <div className="op-loading op-loading-infinity w-[4rem] text-neutral"></div>
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-col md:flex-row gap-6">
+              {/* Signature */}
+              <div className="flex-1 flex flex-col gap-4">
+                <h2 className="text-lg font-semibold">Signature</h2>
+                <canvas
+                  ref={sigCanvasRef}
+                  className="w-full h-48 border-2 border-black rounded-[20px] touch-none"
+                  onMouseDown={(e) => startDrawing(e, sigCanvasRef.current)}
+                  onTouchStart={(e) => startDrawing(e, sigCanvasRef.current)}
+                  onMouseMove={draw}
+                  onTouchMove={draw}
+                  onMouseUp={stopDrawing}
+                  onTouchEnd={stopDrawing}
+                  onMouseLeave={stopDrawing}
+                />
+                <div className="flex justify-between items-center">
+                  <div className="flex gap-4">
+                    <button
+                      onClick={() => clearCanvas(sigCanvasRef, setSignature)}
+                      className="text-black underline text-[16px]"
+                    >
+                      Clear
+                    </button>
+                    <label className="text-black underline text-[16px] cursor-pointer">
+                      Upload
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => handleImageUpload(e, sigCanvasRef, setSignature)}
+                      />
+                    </label>
+                  </div>
+                  <div className="flex gap-2">
+                    {["#0000FF", "#FF0000", "#000000"].map((color) => (
+                      <button
+                        key={color}
+                        onClick={() => setSignatureColor(color)}
+                        className={`p-1 ${
+                          signatureColor === color ? "ring-2 ring-offset-2 rounded-full" : ""
+                        }`}
+                      >
+                        <PenIcon color={color} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
-              <div className="flex gap-2">
-                {['#0000FF', '#FF0000', '#000000'].map((color) => (
-                  <button
-                    key={color}
-                    onClick={() => setSignatureColor(color)}
-                    className={`p-1 ${signatureColor === color ? 'ring-2 ring-offset-2 rounded-full' : ''}`}
-                    style={{ ringColor: color }}
-                  >
-                    <PenIcon color={color} />
-                  </button>
-                ))}
+
+              {/* Initials */}
+              <div className="flex-1 flex flex-col gap-4">
+                <h2 className="text-lg font-semibold">Initials</h2>
+                <canvas
+                  ref={initialsCanvasRef}
+                  className="w-full h-32 border-2 border-black rounded-[20px] touch-none"
+                  onMouseDown={(e) => startDrawing(e, initialsCanvasRef.current)}
+                  onTouchStart={(e) => startDrawing(e, initialsCanvasRef.current)}
+                  onMouseMove={draw}
+                  onTouchMove={draw}
+                  onMouseUp={stopDrawing}
+                  onTouchEnd={stopDrawing}
+                  onMouseLeave={stopDrawing}
+                />
+                <div className="flex justify-between items-center">
+                  <div className="flex gap-4">
+                    <button
+                      onClick={() => clearCanvas(initialsCanvasRef, setInitials)}
+                      className="text-black underline text-[16px]"
+                    >
+                      Clear
+                    </button>
+                    <label className="text-black underline text-[16px] cursor-pointer">
+                      Upload
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => handleImageUpload(e, initialsCanvasRef, setInitials)}
+                      />
+                    </label>
+                  </div>
+                  <div className="flex gap-2">
+                    {["#0000FF", "#FF0000", "#000000"].map((color) => (
+                      <button
+                        key={color}
+                        onClick={() => setInitialsColor(color)}
+                        className={`p-1 ${
+                          initialsColor === color ? "ring-2 ring-offset-2 rounded-full" : ""
+                        }`}
+                      >
+                        <PenIcon color={color} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
 
-        
-          <div className="flex-1 flex flex-col gap-4">
-            <h2 className="text-lg font-semibold">Initials</h2>
-            <canvas
-              ref={initialsCanvasRef}
-              className="w-full h-32 border-2 border-black rounded-[20px] touch-none"
-              onMouseDown={(e) => startDrawing(e, initialsCanvasRef.current, initialsColor)}
-              onTouchStart={(e) => startDrawing(e, initialsCanvasRef.current, initialsColor)}
-              onMouseMove={draw}
-              onTouchMove={draw}
-              onMouseUp={() => setIsDrawing(false)}
-              onTouchEnd={() => setIsDrawing(false)}
-              onMouseLeave={() => setIsDrawing(false)}
-            />
-            <div className="flex justify-between items-center">
-              <div className="flex gap-4">
-                <button 
-                  onClick={() => clearCanvas(initialsCanvasRef)}
-                  className="text-black underline text-[16px]"
-                >
-                  Clear
-                </button>
-                <label className="text-black underline text-[16px] cursor-pointer">
-                  Upload
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => handleImageUpload(e, initialsCanvasRef, setInitials)}
-                  />
-                </label>
-              </div>
-              <div className="flex gap-2">
-                {['#0000FF', '#FF0000', '#000000'].map((color) => (
-                  <button
-                    key={color}
-                    onClick={() => setInitialsColor(color)}
-                    className={`p-1 ${initialsColor === color ? 'ring-2 ring-offset-2 rounded-full' : ''}`}
-                    style={{ ringColor: color }}
-                  >
-                    <PenIcon color={color} />
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <button 
-          className="mt-auto bg-[#002864] text-white px-6 py-2 rounded-[20px] self-start"
-          onClick={updateSignatures}
-        >
-          Save
-        </button>
+            <button
+              className="mt-auto bg-[#002864] text-white px-6 py-2 rounded-[20px] self-start"
+              onClick={updateSignatures}
+            >
+              Save
+            </button>
+          </>
+        )}
       </div>
     </>
   );
