@@ -5,11 +5,6 @@ import { BASE_URL } from "../baseUrl";
 import { toast, ToastContainer } from "react-toastify";
 import StatusBadge from "../component/StatusBadge"; // adjust path if needed
 
-
-// If you still want to use the shared util later, keep this import;
-// currently we use the custom modal logic.
-// import { downloadCertificateOrZip } from "../utils/downloadCertificate";
-
 export default function CompletedComponent() {
   // 1) filters from DocumentsLayout (search bar)
   const { searchText, dateRange, senderFilter } = useOutletContext();
@@ -34,7 +29,7 @@ export default function CompletedComponent() {
   const fetchCompletedRequests = async () => {
     try {
       const token = localStorage.getItem("token");
-      const response = await axios.get(`${BASE_URL}/getCompletedDocs`, {
+      const response = await axios.get(`${BASE_URL}/getCompletedDocsAll`, {
         headers: { authorization: `Bearer ${token}` },
       });
       setLoading(false);
@@ -360,16 +355,7 @@ export default function CompletedComponent() {
           </div>
         ) : (
           <>
-            {/* <div className="grid grid-cols-7 border-t border-b min-w-[600px] border-gray-200 py-3 px-4 font-bold text-[14px]">
-              <div>Title</div>
-              <div>Folder</div>
-              <div>File</div>
-              <div>Owner</div>
-              <div>Signers</div>
-              <div>Action</div>
-            </div> */}
-
-            <div className="grid grid-cols-9 border-t border-b min-w-[900px] border-gray-200 py-3 px-4 font-bold text-[14px]">
+             <div className="grid grid-cols-8 border-t border-b min-w-[900px] border-gray-200 py-3 px-4 font-bold text-[14px]">
               <div>Title</div>
               <div>Folder</div>
               <div>File</div>
@@ -380,57 +366,6 @@ export default function CompletedComponent() {
               <div>Action</div>
             </div>
 
-
-            {/* {paginatedRequests.length === 0 ? (
-              <div className="h-[200px] flex items-center justify-center text-gray-500">
-                No completed documents found
-              </div>
-            ) : (
-              paginatedRequests.map((request) => (
-                <div
-                  key={request.id}
-                  className="grid grid-cols-7 min-w-[600px] py-3 px-4 border-b border-gray-100 items-center"
-                >
-                  <div className="text-sm font-bold">{request.title}</div>
-                  <div className="text-sm text-gray-500">{request.folder}</div>
-                  <div>
-                    <button
-                      onClick={() => openDownloadModal(request)}
-                      className="text-blue-600 underline flex items-center text-sm"
-                    >
-                      Download
-                    </button>
-                  </div>
-                  <div>{request.owner}</div>
-                  <div>
-                    <button
-                      onClick={() => handleViewSigners(request.signers)}
-                      className="text-blue-600 underline flex items-center text-sm"
-                    >
-                      View ({request.signers.length})
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Link
-                      to={`/admin/view-pdf/sign-document/${request.id}`}
-                      className="bg-[#29354a] text-white p-2 rounded flex items-center justify-center"
-                      title="View"
-                    >
-                      <i className="fas fa-eye text-white text-sm"></i>
-                    </Link>
-
-                    <button
-                      onClick={() => handleDelete(request.id)}
-                      className="bg-black text-white p-2 rounded flex items-center justify-center"
-                      title="Delete"
-                    >
-                      <i className="fas fa-trash text-white text-sm"></i>
-                    </button>
-                  </div>
-                </div>
-              ))
-            )} */}
-
             {paginatedRequests?.length === 0 ? (
               <div className="h-[200px] flex items-center justify-center text-gray-500">
                 No completed documents found
@@ -439,7 +374,7 @@ export default function CompletedComponent() {
               paginatedRequests.map((request) => (
                 <div
                   key={request.id}
-                  className="grid grid-cols-9 min-w-[900px] py-3 px-4 border-b border-gray-100 items-center"
+                  className="grid grid-cols-8 min-w-[900px] py-3 px-4 border-b border-gray-100 items-center"
                 >
                   <div className="text-sm font-bold">{request.title}</div>
 
@@ -519,9 +454,10 @@ export default function CompletedComponent() {
         )}
       </div>
 
-      <p className="text-sm text-gray-600 mt-4">
-        Showing {paginatedRequests.length} of {requests.length} results
-      </p>
+        <p className="text-sm text-gray-600 mt-4">
+          Showing {paginatedRequests.length} of {filteredRequests.length} results
+        </p>
+
 
 
       {/* Signers popup */}

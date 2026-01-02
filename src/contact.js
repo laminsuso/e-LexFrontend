@@ -212,7 +212,7 @@ export default function Contact() {
                         value={state.phoneNumber}
                         onChange={setField("phoneNumber")}
                         type="tel"
-                        placeholder="+1 (555) 000-0000"
+                        placeholder="+220 (555) 000-0000"
                         className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
                       />
                     </div>
