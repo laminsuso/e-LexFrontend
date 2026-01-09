@@ -38,6 +38,20 @@
 // };
 // const BRAND_GRADIENT = `linear-gradient(135deg, ${BRAND.from} 0%, ${BRAND.to} 100%)`;
 
+// // Optional tiny helper for brand pill buttons
+// const BrandPillButton = ({ children, style, ...props }) => (
+//   <button
+//     {...props}
+//     className="px-4 py-2 rounded-[20px] text-white shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
+//     style={{
+//       background: BRAND_GRADIENT,
+//       boxShadow: `0 10px 22px ${BRAND.glow}`,
+//       ...style,
+//     }}
+//   >
+//     {children}
+//   </button>
+// );
 
 // // Default box sizes (align with backend DEFAULT_BOXES)
 // const SIG_W = 160, SIG_H = 60;
@@ -169,8 +183,10 @@
 //   );
 //   const myOrder = mySigner ? Number(mySigner.order) || 1 : undefined;
 //   const currentOrder = uses ? Number(doc?.currentOrder) || 1 : undefined;
+//   const invited = !!mySigner?.invited;
 //   const canSign =
-//     !uses || (myOrder !== undefined && currentOrder !== undefined && myOrder === currentOrder);
+//   !uses || (myOrder !== undefined && currentOrder !== undefined && myOrder === currentOrder && invited);
+
 
 //   const waiting =
 //     uses && myOrder
@@ -257,65 +273,100 @@
 //   const overlayRef = useRef(null);   // absolute overlay that matches the PDF canvas
 
 //   /* ---------------------------- Load document ---------------------------- */
+
 //   const reloadDocument = async () => {
-//     try {
-//       const params = new URLSearchParams(location.search);
-//       const queryEmail = (params.get("email") || "").trim();
+//   try {
+//     setLoadingError(null);
 
-//       // Ensure a token exists for the invite email
-//       let token = localStorage.getItem("token");
-//       let me;
+//     const params = new URLSearchParams(location.search);
+//     const queryEmail = (params.get("email") || "").trim();
 
-//       if (token) {
+//     const loginAs = async (email) => {
+//       if (!email) throw new Error("Invite link is missing ?email=");
+//       const auth = await axios.post(`${BASE_URL}/registerAndLogin`, { email });
+//       localStorage.setItem("token", auth.data.token);
+//       return { token: auth.data.token, me: auth.data };
+//     };
+
+//     let token = localStorage.getItem("token");
+//     let me = null;
+
+//     // 1) If token exists, try to load current session
+//     if (token) {
+//       try {
 //         const res = await axios.get(`${BASE_URL}/getUser`, {
 //           headers: { authorization: `Bearer ${token}` },
 //         });
 //         me = res.data;
-//         if (queryEmail && (res.data?.user?.email || "").toLowerCase() !== queryEmail.toLowerCase()) {
-//           const auth = await axios.post(`${BASE_URL}/registerAndLogin`, { email: queryEmail });
-//           localStorage.setItem("token", auth.data.token);
-//           token = auth.data.token;
-//           me = auth.data;
+
+//         // If invite email exists and differs, switch to invite email account
+//         const sessionEmail = (res.data?.user?.email || "").toLowerCase();
+//         if (queryEmail && sessionEmail !== queryEmail.toLowerCase()) {
+//           ({ token, me } = await loginAs(queryEmail));
 //         }
-//       } else {
-//         const auth = await axios.post(`${BASE_URL}/registerAndLogin`, { email: queryEmail });
-//         localStorage.setItem("token", auth.data.token);
-//         token = auth.data.token;
-//         me = auth.data;
+//       } catch (e) {
+//         // ✅ token stale/invalid → clear + fallback to invite login
+//         localStorage.removeItem("token");
+//         token = null;
+//         me = null;
 //       }
-
-//       setCurrentUser(me.user);
-//       setPreference(me.preference);
-//       setCurrentProfile(me.profile);
-
-//       // Fetch document and prepare elements for this recipient
-//       const docRes = await axios.get(`${BASE_URL}/getSpecificDoc/${documentId}`);
-//       const doc = docRes.data.doc || {};
-//       setDocumentData(doc);
-//       setFile(doc.file);
-
-//       // compute signing order info (if enabled)
-//       const info = computeSigningOrderMeta(doc, queryEmail || me?.user?.email || "");
-//       setOrderInfo(info);
-
-//       const signingContext = {
-//         recipients: doc.recipients || [],
-//         queryEmail,
-//         user: me.user,
-//         profile: me.profile,
-//       };
-
-//       const recipient = resolveCurrentRecipient(signingContext);
-//       const sanitized = sanitizeIncomingElements(doc.elements || []);
-//       const prefilled = prefillForRecipient(sanitized, recipient);
-
-//       setSignatureElements(prefilled);
-//     } catch (err) {
-//       console.error("Load error:", err);
-//       setLoadingError("Failed to load document");
 //     }
-//   };
 
+//     // 2) If no token, login via invite email
+//     if (!token) {
+//       ({ token, me } = await loginAs(queryEmail));
+//     }
+
+//     setCurrentUser(me.user);
+//     setPreference(me.preference);
+//     setCurrentProfile(me.profile);
+
+//         // ✅ Always try to carry invite email through to the backend
+//     const docUrl = queryEmail
+//       ? `${BASE_URL}/getSpecificDoc/${documentId}?email=${encodeURIComponent(queryEmail)}`
+//       : `${BASE_URL}/getSpecificDocAuth/${documentId}`;
+
+//     // ✅ Send token if we have it (use capital 'Authorization')
+//     const docRes = await axios.get(`${BASE_URL}/getSpecificDoc/${documentId}`, {
+//       headers: { authorization: `Bearer ${token}` },
+//     });
+
+
+//     const doc = docRes.data.doc || {};
+//     setDocumentData(doc);
+//     setFile(doc.file);
+
+
+//     const info = computeSigningOrderMeta(doc, queryEmail || me?.user?.email || "");
+//     setOrderInfo(info);
+
+//     const signingContext = {
+//       recipients: doc.recipients || [],
+//       queryEmail,
+//       user: me.user,
+//       profile: me.profile,
+//     };
+
+//     const recipient = resolveCurrentRecipient(signingContext);
+//     const sanitized = sanitizeIncomingElements(doc.elements || []);
+//     const prefilled = prefillForRecipient(sanitized, recipient);
+
+//     setSignatureElements(prefilled);
+//   } catch (err) {
+//     console.error("Load error:", err);
+
+//     // ✅ show real server message so you can debug faster
+//     const msg =
+//       err?.response?.data?.error ||
+//       err?.response?.data?.message ||
+//       err?.message ||
+//       "Failed to load document";
+
+//     setLoadingError(msg);
+//   }
+// };
+
+  
 //   useEffect(() => {
 //     reloadDocument();
 //     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -438,16 +489,22 @@
 //     (el.recipientEmail || "").toLowerCase() === (currentUser?.email || "").toLowerCase();
 
 //   const todos = useMemo(() => {
-//     const pending = signatureElements.filter((el) => isMine(el) && !el.value);
-//     // deterministic order across pages/top->bottom->left
-//     return pending.sort((a, b) =>
-//       a.pageNumber !== b.pageNumber
-//         ? a.pageNumber - b.pageNumber
-//         : a.y !== b.y
-//         ? a.y - b.y
-//         : a.x - b.x
-//     );
-//   }, [signatureElements, currentUser]);
+//   const myEmail = (currentUser?.email || "").toLowerCase();
+
+//   const pending = signatureElements.filter((el) => {
+//     const elEmail = (el.recipientEmail || "").toLowerCase();
+//     return elEmail === myEmail && !el.value;
+//   });
+
+//   return pending.sort((a, b) =>
+//     a.pageNumber !== b.pageNumber
+//       ? a.pageNumber - b.pageNumber
+//       : a.y !== b.y
+//       ? a.y - b.y
+//       : a.x - b.x
+//   );
+// }, [signatureElements, currentUser?.email]);
+
 
 //   // currently selected "required" field (by index into todos)
 //   const [todoIndex, setTodoIndex] = useState(null);
@@ -720,61 +777,83 @@
 //   };
 
 //   const handleSaveDocument = async () => {
-//     try {
-//       const token = localStorage.getItem("token");
-//       setLoading(true);
-
-//       // Ensure this signer’s date(s) are set to today (ISO) if empty
-//       const todayISO = toISODate(new Date());
-//       const ensured = signatureElements.map((el) => {
-//         const mine =
-//           (el.recipientEmail || "").toLowerCase() === (currentUser.email || "").toLowerCase();
-//         if (mine && el.type === "date" && (!el.value || String(el.value).trim() === "")) {
-//           return { ...el, value: todayISO };
-//         }
-//         return el;
-//       });
-
-//       const withDims = normalizeForBackend(ensured);
-
-//       // Render to PDF on backend and get back bytes
-//       const embedResponse = await axios.post(
-//         `${BASE_URL}/embedElementsInPDF`,
-//         { documentId, elements: withDims },
-//         { headers: { authorization: `Bearer ${token}` }, responseType: "blob" }
-//       );
-
-//       // Replace the document file with the signed version
-//       const blob = new Blob([embedResponse.data], { type: "application/pdf" });
-//       const signedFile = new File([blob], `signedDocument-${documentId}.pdf`, {
-//         type: "application/pdf",
-//       });
-
-//       const dataForm = new FormData();
-//       dataForm.append("document", signedFile);
-//       dataForm.append("documentId", documentId);
-
-//       await axios.patch(`${BASE_URL}/editDocument/${documentId}`, dataForm, {
-//         headers: { authorization: `Bearer ${token}` },
-//       });
-
-//       // Mark this signer as signed (send audit meta)
-//       const meta = await buildClientMeta();
-//       await axios.patch(
-//         `${BASE_URL}/signDocument`,
-//         { documentId, email: currentUser.email, meta },
-//         { headers: { authorization: `Bearer ${token}` } }
-//       );
-
-//       toast.success("Document signed", { containerId: "signaturesign" });
-//       window.location.href = "/admin";
-//     } catch (error) {
-//       setLoading(false);
-//       toast.error(error?.response?.data?.error || "Something went wrong", {
+//   try {
+//     const token = localStorage.getItem("token");
+//     if (!token) {
+//       toast.error("Missing login token. Please refresh and try again.", {
 //         containerId: "signaturesign",
 //       });
+//       return;
 //     }
-//   };
+
+//     if (!currentUser?.email) {
+//       toast.error("Could not determine signer email. Please refresh and try again.", {
+//         containerId: "signaturesign",
+//       });
+//       return;
+//     }
+
+//     setLoading(true);
+
+//     // Ensure this signer’s date(s) are set to today (ISO) if empty
+//     const todayISO = toISODate(new Date());
+//     const ensured = signatureElements.map((el) => {
+//       const mine =
+//         (el.recipientEmail || "").toLowerCase() === (currentUser.email || "").toLowerCase();
+//       if (mine && el.type === "date" && (!el.value || String(el.value).trim() === "")) {
+//         return { ...el, value: todayISO };
+//       }
+//       return el;
+//     });
+
+//     const withDims = normalizeForBackend(ensured);
+
+//     // 1) Render PDF with filled elements on backend
+//     const embedResponse = await axios.post(
+//       `${BASE_URL}/embedElementsInPDF`,
+//       { documentId, elements: withDims },
+//       {
+//         headers: { authorization: `Bearer ${token}` },
+//         responseType: "blob",
+//       }
+//     );
+
+//     // 2) Upload the rendered PDF back to server (signer update on a sent doc)
+//     const blob = new Blob([embedResponse.data], { type: "application/pdf" });
+//     const signedFile = new File([blob], `signedDocument-${documentId}.pdf`, {
+//       type: "application/pdf",
+//     });
+
+//     const dataForm = new FormData();
+//     dataForm.append("document", signedFile);
+//     dataForm.append("signerEmail", currentUser.email); // ✅ important for signer detection
+
+//     await axios.patch(`${BASE_URL}/editDocument/${documentId}`, dataForm, {
+//       headers: {
+//         authorization: `Bearer ${token}`,
+//         // ✅ let axios set correct boundary automatically; do NOT manually set Content-Type
+//       },
+//     });
+
+//     // 3) Mark signer as signed (audit meta)
+//     const meta = await buildClientMeta();
+//     await axios.patch(
+//       `${BASE_URL}/signDocument`,
+//       { documentId, email: currentUser.email, meta },
+//       { headers: { authorization: `Bearer ${token}` } }
+//     );
+
+//     toast.success("Document signed", { containerId: "signaturesign" });
+//     window.location.href = "/admin";
+//   } catch (error) {
+//     console.error("handleSaveDocument error:", error);
+//     toast.error(error?.response?.data?.error || "Something went wrong", {
+//       containerId: "signaturesign",
+//     });
+//     setLoading(false);
+//   }
+// };
+
 
 //   const declineSign = async () => {
 //     try {
@@ -1006,18 +1085,19 @@
 //             {/* Highlight box */}
 //             {indicator.visible && (
 //               <div
-//                 className="absolute rounded-lg border-2 border-indigo-400"
+//                 className="absolute rounded-lg border-2"
 //                 style={{
 //                   left: indicator.hilite.left,
 //                   top: indicator.hilite.top,
 //                   width: indicator.hilite.width,
 //                   height: indicator.hilite.height,
-//                   boxShadow: "0 0 0 3px rgba(99,102,241,0.12)",
+//                   borderColor: BRAND.from,
+//                   boxShadow: `0 0 0 3px ${BRAND.glow}`,
 //                 }}
 //               />
 //             )}
 
-//             {/* Arrow bubble */}
+//             {/* Arrow bubble (brand gradient) */}
 //             {indicator.visible && (
 //               <div
 //                 className="absolute flex items-center justify-center"
@@ -1027,12 +1107,16 @@
 //                   width: ARROW_RADIUS * 2,
 //                   height: ARROW_RADIUS * 2,
 //                   borderRadius: ARROW_RADIUS,
-//                   background: "#5848ff",
+//                   background: BRAND_GRADIENT,
 //                   color: "white",
-//                   boxShadow: "0 6px 16px rgba(88,72,255,0.35)",
+//                   boxShadow: `0 10px 24px ${BRAND.glow}`,
+//                   border: "2px solid #fff",
 //                 }}
 //               >
-//                 <span className="text-sm" style={{ transform: indicator.side === "left" ? "rotate(0deg)" : "rotate(180deg)" }}>
+//                 <span
+//                   className="text-sm"
+//                   style={{ transform: indicator.side === "left" ? "rotate(0deg)" : "rotate(180deg)" }}
+//                 >
 //                   ➜
 //                 </span>
 //               </div>
@@ -1086,7 +1170,7 @@
 //             </div>
 //           )}
 
-//           {/* Top action buttons */}
+//           {/* Top action buttons (unchanged) */}
 //           <button
 //             onClick={declineSign}
 //             className="fixed top-4 right-[20%] z-50 bg-[#29354a] text-white px-6 py-2 rounded-[20px] shadow-l"
@@ -1101,21 +1185,21 @@
 //             Complete Signing
 //           </button>
 
-//           {/* Bottom-right Next/Prev required */}
+//           {/* Bottom-right Next/Prev required (brand gradient) */}
 //           {orderInfo.canSign && todos.length > 0 && (
 //             <>
-//               <button
+//               <BrandPillButton
 //                 onClick={gotoPrevRequired}
-//                 className="fixed right-40 bottom-6 z-50 bg-[#5848ff] text-white px-4 py-2 rounded-[20px] shadow-lg"
+//                 style={{ position: "fixed", right: 160, bottom: 24, zIndex: 50 }}
 //               >
 //                 Prev required
-//               </button>
-//               <button
+//               </BrandPillButton>
+//               <BrandPillButton
 //                 onClick={gotoNextRequired}
-//                 className="fixed right-6 bottom-6 z-50 bg-[#5848ff] text-white px-4 py-2 rounded-[20px] shadow-lg"
+//                 style={{ position: "fixed", right: 24, bottom: 24, zIndex: 50 }}
 //               >
 //                 Next required
-//               </button>
+//               </BrandPillButton>
 //             </>
 //           )}
 
@@ -1150,13 +1234,14 @@
 //                     {indicator.visible && (
 //                       <>
 //                         <div
-//                           className="absolute rounded-lg border-2 border-indigo-400"
+//                           className="absolute rounded-lg border-2"
 //                           style={{
 //                             left: indicator.hilite.left,
 //                             top: indicator.hilite.top,
 //                             width: indicator.hilite.width,
 //                             height: indicator.hilite.height,
-//                             boxShadow: "0 0 0 3px rgba(99,102,241,0.12)",
+//                             borderColor: BRAND.from,
+//                             boxShadow: `0 0 0 3px ${BRAND.glow}`,
 //                           }}
 //                         />
 //                         <div
@@ -1167,12 +1252,18 @@
 //                             width: ARROW_RADIUS * 2,
 //                             height: ARROW_RADIUS * 2,
 //                             borderRadius: ARROW_RADIUS,
-//                             background: "#5848ff",
+//                             background: BRAND_GRADIENT,
 //                             color: "white",
-//                             boxShadow: "0 6px 16px rgba(88,72,255,0.35)",
+//                             boxShadow: `0 10px 24px ${BRAND.glow}`,
+//                             border: "2px solid #fff",
 //                           }}
 //                         >
-//                           <span className="text-sm" style={{ transform: indicator.side === "left" ? "rotate(0deg)" : "rotate(180deg)" }}>➜</span>
+//                           <span
+//                             className="text-sm"
+//                             style={{ transform: indicator.side === "left" ? "rotate(0deg)" : "rotate(180deg)" }}
+//                           >
+//                             ➜
+//                           </span>
 //                         </div>
 //                       </>
 //                     )}
@@ -1340,6 +1431,7 @@ const PDF_WORKER_URLS = [
   `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`,
   `//cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`,
 ];
+
 const setPDFWorker = () => {
   let idx = 0;
   const tryWorker = () => {
@@ -1357,15 +1449,13 @@ const tryNextWorker = setPDFWorker();
 const CONTACT_LABEL = { name: "Name", email: "Email", phone: "Phone" };
 const VIRTUAL_WIDTH = 800; // must match builder/backend
 
-// === Brand colors (from your site icon) =====================================
 const BRAND = {
-  from: "#7E3FF2",   // main purple
-  to:   "#D65BFF",   // magenta accent (for a soft gradient)
-  glow: "rgba(126, 63, 242, 0.32)", // shadow/glow around arrow & pills
+  from: "#7E3FF2",
+  to: "#D65BFF",
+  glow: "rgba(126, 63, 242, 0.32)",
 };
 const BRAND_GRADIENT = `linear-gradient(135deg, ${BRAND.from} 0%, ${BRAND.to} 100%)`;
 
-// Optional tiny helper for brand pill buttons
 const BrandPillButton = ({ children, style, ...props }) => (
   <button
     {...props}
@@ -1388,10 +1478,9 @@ const DATE_W = 120, DATE_H = 40;
 const SIGNATURE_BLUE = "#1a73e8";
 const MIN_WIDTH = 0.8, MAX_WIDTH = 2.6, SMOOTHING = 0.85, VELOCITY_FILTER = 0.7;
 
-// Indicator styles
-const ARROW_RADIUS = 18;      // px
-const INDENT = 8;             // gap between arrow and field
-const HILITE_PAD = 6;         // extra rectangle padding around field
+const ARROW_RADIUS = 18;
+const INDENT = 8;
+const HILITE_PAD = 6;
 
 /* ------------------------------ Date helpers ------------------------------ */
 const toISODate = (d = new Date()) => {
@@ -1467,7 +1556,7 @@ function sanitizeIncomingElements(elements = []) {
 
     return {
       ...el,
-      id: el._id || Math.random().toString(36).slice(2),
+      id: el.id || el._id || Math.random().toString(36).slice(2),
       label: cleanLabel,
       value: el.value ?? null,
       pageNumber,
@@ -1510,15 +1599,24 @@ function computeSigningOrderMeta(doc, myEmail) {
   );
   const myOrder = mySigner ? Number(mySigner.order) || 1 : undefined;
   const currentOrder = uses ? Number(doc?.currentOrder) || 1 : undefined;
+  const invited = !!mySigner?.invited;
+
   const canSign =
-    !uses || (myOrder !== undefined && currentOrder !== undefined && myOrder === currentOrder);
+    !uses ||
+    (myOrder !== undefined &&
+      currentOrder !== undefined &&
+      myOrder === currentOrder &&
+      invited);
 
   const waiting =
     uses && myOrder
       ? signers
           .filter(
             (s) =>
-              (Number(s.order) || 1) < myOrder && !s.signed && !s.declined && s.willSign !== false
+              (Number(s.order) || 1) < myOrder &&
+              !s.signed &&
+              !s.declined &&
+              s.willSign !== false
           )
           .map((s) => s.email)
       : [];
@@ -1550,6 +1648,20 @@ const buildClientMeta = () =>
     );
   });
 
+/* ------------------------------ File type checks --------------------------- */
+const isLikelyPdf = (f) => {
+  if (!f || typeof f !== "string") return false;
+  const s = f.toLowerCase();
+  return s.startsWith("data:application/pdf") || s.includes(".pdf");
+};
+
+const isLikelyImage = (f) => {
+  if (!f || typeof f !== "string") return false;
+  const s = f.toLowerCase();
+  if (s.startsWith("data:image/")) return true;
+  return /\.(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(s);
+};
+
 /* ================================= Component ================================ */
 
 const SignDocumentPage = () => {
@@ -1557,9 +1669,9 @@ const SignDocumentPage = () => {
   const location = useLocation();
 
   // data
-  const [documentData, setDocumentData] = useState(null);
+ // const [documentData, setDocumentData] = useState(null);
   const [currentProfile, setCurrentProfile] = useState(null);
-  const [preference, setPreference] = useState({});
+  //const [preference, setPreference] = useState({});
   const [currentUser, setCurrentUser] = useState(null);
 
   // signing order UI state
@@ -1588,62 +1700,92 @@ const SignDocumentPage = () => {
   const [loadingError, setLoadingError] = useState(null);
   const [pdfLoadError, setPdfLoadError] = useState(null);
 
+  // Force remount of <Document> when switching worker URLs
+  const [pdfKey, setPdfKey] = useState(0);
+
   // drawing
   const [isDrawing, setIsDrawing] = useState(false);
   const [canvasContext, setCanvasContext] = useState(null);
   const canvasRef = useRef(null);
 
   // containers
-  const pageWrapRef = useRef(null);  // wraps a single Page
-  const overlayRef = useRef(null);   // absolute overlay that matches the PDF canvas
+  const pageWrapRef = useRef(null);
+  const overlayRef = useRef(null);
 
   /* ---------------------------- Load document ---------------------------- */
   const reloadDocument = async () => {
     try {
+      setLoadingError(null);
+      setPdfLoadError(null);
+
       const params = new URLSearchParams(location.search);
       const queryEmail = (params.get("email") || "").trim();
 
-      // Ensure a token exists for the invite email
-      let token = localStorage.getItem("token");
-      let me;
+      const loginAs = async (email) => {
+        if (!email) throw new Error("Invite link is missing ?email=");
+        const authRes = await axios.post(`${BASE_URL}/registerAndLogin`, { email });
+        localStorage.setItem("token", authRes.data.token);
+        return { token: authRes.data.token, me: authRes.data };
+      };
 
+      let token = localStorage.getItem("token");
+      let me = null;
+
+      // 1) If token exists, try to load current session
       if (token) {
-        const res = await axios.get(`${BASE_URL}/getUser`, {
-          headers: { authorization: `Bearer ${token}` },
-        });
-        me = res.data;
-        if (queryEmail && (res.data?.user?.email || "").toLowerCase() !== queryEmail.toLowerCase()) {
-          const auth = await axios.post(`${BASE_URL}/registerAndLogin`, { email: queryEmail });
-          localStorage.setItem("token", auth.data.token);
-          token = auth.data.token;
-          me = auth.data;
+        try {
+          const res = await axios.get(`${BASE_URL}/getUser`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          me = res.data;
+
+          // If invite email exists and differs, switch to invite email account
+          const sessionEmail = (res.data?.user?.email || "").toLowerCase();
+          if (queryEmail && sessionEmail && sessionEmail !== queryEmail.toLowerCase()) {
+            ({ token, me } = await loginAs(queryEmail));
+          }
+        } catch (e) {
+          // token stale/invalid → clear + fallback to invite login
+          localStorage.removeItem("token");
+          token = null;
+          me = null;
         }
-      } else {
-        const auth = await axios.post(`${BASE_URL}/registerAndLogin`, { email: queryEmail });
-        localStorage.setItem("token", auth.data.token);
-        token = auth.data.token;
-        me = auth.data;
       }
 
-      setCurrentUser(me.user);
-      setPreference(me.preference);
-      setCurrentProfile(me.profile);
+      // 2) If no token, login via invite email (if available)
+      if (!token) {
+        if (queryEmail) {
+          ({ token, me } = await loginAs(queryEmail));
+        } else {
+          throw new Error("Missing login token. Please login and try again.");
+        }
+      }
 
-      // Fetch document and prepare elements for this recipient
-      const docRes = await axios.get(`${BASE_URL}/getSpecificDoc/${documentId}`);
+      setCurrentUser(me?.user || null);
+      //setPreference(me?.preference || {});
+      setCurrentProfile(me?.profile || null);
+
+      // ✅ IMPORTANT: Use the URL you computed, and include ?email= for invite links.
+      const docUrl = queryEmail
+        ? `${BASE_URL}/getSpecificDoc/${documentId}?email=${encodeURIComponent(queryEmail)}`
+        : `${BASE_URL}/getSpecificDocAuth/${documentId}`;
+
+      const docRes = await axios.get(docUrl, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+
       const doc = docRes.data.doc || {};
-      setDocumentData(doc);
-      setFile(doc.file);
+      //setDocumentData(doc);
+      setFile(doc.file || null);
 
-      // compute signing order info (if enabled)
       const info = computeSigningOrderMeta(doc, queryEmail || me?.user?.email || "");
       setOrderInfo(info);
 
       const signingContext = {
         recipients: doc.recipients || [],
         queryEmail,
-        user: me.user,
-        profile: me.profile,
+        user: me?.user,
+        profile: me?.profile,
       };
 
       const recipient = resolveCurrentRecipient(signingContext);
@@ -1653,7 +1795,12 @@ const SignDocumentPage = () => {
       setSignatureElements(prefilled);
     } catch (err) {
       console.error("Load error:", err);
-      setLoadingError("Failed to load document");
+      const msg =
+        err?.response?.data?.error ||
+        err?.response?.data?.message ||
+        err?.message ||
+        "Failed to load document";
+      setLoadingError(msg);
     }
   };
 
@@ -1673,7 +1820,8 @@ const SignDocumentPage = () => {
       setCanvasContext(ctx);
       if (currentProfile?.signature) {
         const img = new Image();
-        img.onload = () => ctx.drawImage(img, 0, 0, canvasRef.current.width, canvasRef.current.height);
+        img.onload = () =>
+          ctx.drawImage(img, 0, 0, canvasRef.current.width, canvasRef.current.height);
         img.src = currentProfile.signature;
       }
     }
@@ -1684,17 +1832,18 @@ const SignDocumentPage = () => {
     setNumPages(numPages);
     setPdfLoadError(null);
   };
+
   const onDocumentLoadError = (error) => {
     console.error("PDF loading error:", error);
-    if (error.name === "MissingPDFException" || error.message?.includes("worker")) {
-      tryNextWorker();
-      setTimeout(() => setFile((prev) => prev), 100);
-    } else {
-      setPdfLoadError(`Failed to load PDF: ${error.message || "Unknown error"}`);
-    }
+
+    // Try next worker CDN and remount the PDF to retry
+    tryNextWorker();
+    setPdfKey((k) => k + 1);
+
+    // If it still fails, show a readable error
+    setPdfLoadError(`Failed to load PDF: ${error?.message || "Unknown error"}`);
   };
 
-  // When a page finishes rendering, measure its height so our overlay matches exactly.
   const handlePageRenderSuccess = (page) => {
     try {
       const scale = VIRTUAL_WIDTH / page.view[2];
@@ -1709,8 +1858,10 @@ const SignDocumentPage = () => {
   /* ------------------------------ Utilities ------------------------------- */
   const validateAndFixPDFUrl = (url) => {
     if (!url) return null;
+    if (typeof url !== "string") return null;
+    if (url.startsWith("data:")) return url;
     if (url.startsWith("/")) return `${BASE_URL}${url}`;
-    if (!/^https?:\/\//i.test(url) && !url.startsWith("data:")) return `https://${url}`;
+    if (!/^https?:\/\//i.test(url)) return `https://${url}`;
     return url;
   };
 
@@ -1733,6 +1884,7 @@ const SignDocumentPage = () => {
     canvasContext.moveTo(p.x, p.y);
     setIsDrawing(true);
   };
+
   const draw = (e) => {
     if (!isDrawing || !canvasContext) return;
     e.preventDefault();
@@ -1763,24 +1915,27 @@ const SignDocumentPage = () => {
     lastPointRef.current = p;
     lastTimeRef.current = now;
   };
+
   const stopDrawing = () => {
     if (!isDrawing) return;
     canvasContext?.closePath();
     setIsDrawing(false);
     lastPointRef.current = null;
   };
+
   const handleClearCanvas = () => {
     if (!canvasRef.current || !canvasContext) return;
     canvasContext.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
   };
 
   /* -------------------------- Required‑field list -------------------------- */
-  const isMine = (el) =>
-    (el.recipientEmail || "").toLowerCase() === (currentUser?.email || "").toLowerCase();
-
   const todos = useMemo(() => {
-    const pending = signatureElements.filter((el) => isMine(el) && !el.value);
-    // deterministic order across pages/top->bottom->left
+    const myEmail = (currentUser?.email || "").toLowerCase();
+    const pending = signatureElements.filter((el) => {
+      const elEmail = (el.recipientEmail || "").toLowerCase();
+      return elEmail === myEmail && !el.value;
+    });
+
     return pending.sort((a, b) =>
       a.pageNumber !== b.pageNumber
         ? a.pageNumber - b.pageNumber
@@ -1788,12 +1943,10 @@ const SignDocumentPage = () => {
         ? a.y - b.y
         : a.x - b.x
     );
-  }, [signatureElements, currentUser]);
+  }, [signatureElements, currentUser?.email]);
 
-  // currently selected "required" field (by index into todos)
   const [todoIndex, setTodoIndex] = useState(null);
 
-  // After elements load, auto‑select first required and jump to its page
   useEffect(() => {
     if (!orderInfo.canSign) {
       setTodoIndex(null);
@@ -1803,7 +1956,6 @@ const SignDocumentPage = () => {
       setTodoIndex(null);
       return;
     }
-    // If we don't already point to a valid item, point to the first and change page.
     if (todoIndex == null || !todos[todoIndex]) {
       setTodoIndex(0);
       setPageNumber(todos[0].pageNumber);
@@ -1816,13 +1968,12 @@ const SignDocumentPage = () => {
     visible: false,
     top: 0,
     left: 0,
-    side: "left", // left | right
+    side: "left",
     hilite: { top: 0, left: 0, width: 0, height: 0 },
   });
 
   const activeTodoId = useMemo(() => (todos[todoIndex]?.id ?? null), [todos, todoIndex]);
 
-  // Measure the actual DOM box of the active field and position the indicator
   const updateIndicator = React.useCallback(() => {
     const overlay = overlayRef.current;
     if (!overlay || !activeTodoId || !orderInfo.canSign) {
@@ -1839,13 +1990,11 @@ const SignDocumentPage = () => {
     const oRect = overlay.getBoundingClientRect();
     const fRect = fieldNode.getBoundingClientRect();
 
-    // Highlight rectangle padded a bit
     const hLeft = Math.max(0, fRect.left - oRect.left - HILITE_PAD);
     const hTop = Math.max(0, fRect.top - oRect.top - HILITE_PAD);
     const hW = Math.min(oRect.width, fRect.width + HILITE_PAD * 2);
     const hH = Math.min(oRect.height, fRect.height + HILITE_PAD * 2);
 
-    // Place the arrow to the left if there's room; otherwise to the right
     const roomLeft = hLeft >= ARROW_RADIUS * 2 + INDENT;
     const side = roomLeft ? "left" : "right";
     const arrowLeft =
@@ -1865,15 +2014,9 @@ const SignDocumentPage = () => {
       hilite: { top: hTop, left: hLeft, width: hW, height: hH },
     });
 
-    // Ensure the field is visible vertically
     fieldNode.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [activeTodoId, orderInfo.canSign]);
 
-  // Reposition indicator when:
-  //  - page renders (pageHeight changes)
-  //  - page number changes
-  //  - active todo changes
-  //  - window resizes or container scrolls
   useLayoutEffect(() => {
     updateIndicator();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1883,7 +2026,6 @@ const SignDocumentPage = () => {
     const onResize = () => updateIndicator();
     const onScroll = () => updateIndicator();
     window.addEventListener("resize", onResize, { passive: true });
-    // scroll container is the main page; listen broadly
     document.addEventListener("scroll", onScroll, { passive: true, capture: true });
     return () => {
       window.removeEventListener("resize", onResize);
@@ -1891,15 +2033,14 @@ const SignDocumentPage = () => {
     };
   }, [updateIndicator]);
 
-  // Jump helpers
   const gotoNextRequired = () => {
     if (!orderInfo.canSign || todos.length === 0) return;
     const next = (todoIndex ?? -1) + 1;
     const idx = next < todos.length ? next : 0;
     setTodoIndex(idx);
     setPageNumber(todos[idx].pageNumber);
-    // position will update on next layout pass
   };
+
   const gotoPrevRequired = () => {
     if (!orderInfo.canSign || todos.length === 0) return;
     const prev = (todoIndex ?? todos.length) - 1;
@@ -1917,15 +2058,15 @@ const SignDocumentPage = () => {
       );
       return;
     }
-    if (
-      (element?.recipientEmail || "").toLowerCase() !== (currentUser?.email || "").toLowerCase()
-    ) {
+
+    if ((element?.recipientEmail || "").toLowerCase() !== (currentUser?.email || "").toLowerCase()) {
       toast.error(
         `Your current email is ${currentUser?.email || "unknown"}; this field is for ${element.recipientEmail}`,
         { containerId: "signaturesign" }
       );
       return;
     }
+
     setActiveElement(element);
     setSignatureType(null);
 
@@ -1937,7 +2078,8 @@ const SignDocumentPage = () => {
         setInputValue(element.value || "");
         break;
       case "initials":
-        setInputValue(element.value || (currentProfile?.initials || "")); break;
+        setInputValue(element.value || (currentProfile?.initials || ""));
+        break;
       case "date": {
         const d = element.value ? parseISODateToLocal(element.value) : new Date();
         setSelectedDate(d);
@@ -1951,7 +2093,8 @@ const SignDocumentPage = () => {
   const convertTextToSignature = (text) => {
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
-    canvas.width = 200; canvas.height = 80;
+    canvas.width = 200;
+    canvas.height = 80;
     ctx.font = "italic 42px 'Great Vibes', cursive";
     ctx.fillStyle = SIGNATURE_BLUE;
     ctx.textBaseline = "middle";
@@ -1960,9 +2103,8 @@ const SignDocumentPage = () => {
     return canvas.toDataURL();
   };
 
-  const completeAndAdvanceRef = useRef(null); // stores last completed field id
+  const completeAndAdvanceRef = useRef(null);
 
-  // Keep the signature BOX size fixed; only the image scales inside it
   const commitSignatureValue = (elementId, dataUrl) => {
     completeAndAdvanceRef.current = elementId;
     setSignatureElements((prev) =>
@@ -1998,11 +2140,20 @@ const SignDocumentPage = () => {
           return;
         }
         break;
-      case "checkbox": value = !!inputValue; break;
-      case "image":    value = inputValue;   break;
-      case "initials": value = (inputValue || "").toUpperCase(); break;
-      case "date":     value = toISODate(selectedDate); break;
-      default:         value = inputValue;
+      case "checkbox":
+        value = !!inputValue;
+        break;
+      case "image":
+        value = inputValue;
+        break;
+      case "initials":
+        value = (inputValue || "").toUpperCase();
+        break;
+      case "date":
+        value = toISODate(selectedDate);
+        break;
+      default:
+        value = inputValue;
     }
 
     completeAndAdvanceRef.current = activeElement.id;
@@ -2013,7 +2164,6 @@ const SignDocumentPage = () => {
     setInputValue("");
   };
 
-  // After any field is completed, move indicator to the next required field
   useEffect(() => {
     const justCompleted = completeAndAdvanceRef.current;
     if (!justCompleted) return;
@@ -2022,7 +2172,6 @@ const SignDocumentPage = () => {
     if (!orderInfo.canSign) return;
 
     if (todos.length > 0) {
-      // if the just-completed item is still the current, advance to the next item
       const pos = todos.findIndex((t) => t.id === activeTodoId);
       const idx = pos >= 0 ? Math.min(pos, todos.length - 1) : 0;
       setTodoIndex(idx);
@@ -2031,7 +2180,7 @@ const SignDocumentPage = () => {
       setTodoIndex(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signatureElements]); // when elements change, recompute where to move
+  }, [signatureElements]);
 
   /* --------------------------- Save / decline flow -------------------------- */
   const normalizeForBackend = (elements) => {
@@ -2063,9 +2212,22 @@ const SignDocumentPage = () => {
   const handleSaveDocument = async () => {
     try {
       const token = localStorage.getItem("token");
+      if (!token) {
+        toast.error("Missing login token. Please refresh and try again.", {
+          containerId: "signaturesign",
+        });
+        return;
+      }
+
+      if (!currentUser?.email) {
+        toast.error("Could not determine signer email. Please refresh and try again.", {
+          containerId: "signaturesign",
+        });
+        return;
+      }
+
       setLoading(true);
 
-      // Ensure this signer’s date(s) are set to today (ISO) if empty
       const todayISO = toISODate(new Date());
       const ensured = signatureElements.map((el) => {
         const mine =
@@ -2078,14 +2240,17 @@ const SignDocumentPage = () => {
 
       const withDims = normalizeForBackend(ensured);
 
-      // Render to PDF on backend and get back bytes
+      // 1) Render PDF with filled elements on backend
       const embedResponse = await axios.post(
         `${BASE_URL}/embedElementsInPDF`,
         { documentId, elements: withDims },
-        { headers: { authorization: `Bearer ${token}` }, responseType: "blob" }
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          responseType: "blob",
+        }
       );
 
-      // Replace the document file with the signed version
+      // 2) Upload rendered PDF back to server
       const blob = new Blob([embedResponse.data], { type: "application/pdf" });
       const signedFile = new File([blob], `signedDocument-${documentId}.pdf`, {
         type: "application/pdf",
@@ -2093,27 +2258,28 @@ const SignDocumentPage = () => {
 
       const dataForm = new FormData();
       dataForm.append("document", signedFile);
-      dataForm.append("documentId", documentId);
+      dataForm.append("signerEmail", currentUser.email);
 
       await axios.patch(`${BASE_URL}/editDocument/${documentId}`, dataForm, {
-        headers: { authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
-      // Mark this signer as signed (send audit meta)
+      // 3) Mark signer as signed (audit meta)
       const meta = await buildClientMeta();
       await axios.patch(
         `${BASE_URL}/signDocument`,
         { documentId, email: currentUser.email, meta },
-        { headers: { authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
 
       toast.success("Document signed", { containerId: "signaturesign" });
       window.location.href = "/admin";
     } catch (error) {
-      setLoading(false);
+      console.error("handleSaveDocument error:", error);
       toast.error(error?.response?.data?.error || "Something went wrong", {
         containerId: "signaturesign",
       });
+      setLoading(false);
     }
   };
 
@@ -2123,7 +2289,7 @@ const SignDocumentPage = () => {
       await axios.patch(
         `${BASE_URL}/declineDocs`,
         { email: currentUser.email, docId: documentId },
-        { headers: { authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
       toast.success("Sign declined successfully", { containerId: "signaturesign" });
       setTimeout(() => window.close(), 500);
@@ -2192,7 +2358,7 @@ const SignDocumentPage = () => {
     return (
       <div
         key={element.id}
-        data-field-id={element.id}           /* <-- used for indicator positioning */
+        data-field-id={element.id}
         className={`border-2 rounded-sm p-1 ${
           palette[element.type]
         } ${clickable ? "cursor-pointer" : "cursor-not-allowed opacity-70"}`}
@@ -2269,7 +2435,7 @@ const SignDocumentPage = () => {
             <button
               onClick={() => {
                 setPdfLoadError(null);
-                setFile((prev) => prev);
+                setPdfKey((k) => k + 1);
               }}
               className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
             >
@@ -2283,6 +2449,7 @@ const SignDocumentPage = () => {
     return (
       <div ref={pageWrapRef} className="relative inline-block" style={{ width: `${VIRTUAL_WIDTH}px` }}>
         <Document
+          key={pdfKey}
           file={validatedUrl}
           onLoadSuccess={onDocumentLoadSuccess}
           onLoadError={onDocumentLoadError}
@@ -2329,7 +2496,6 @@ const SignDocumentPage = () => {
           />
         </Document>
 
-        {/* Absolute overlay anchored to page top-left */}
         {pageHeight && (
           <div
             ref={overlayRef}
@@ -2344,7 +2510,6 @@ const SignDocumentPage = () => {
                 </div>
               ))}
 
-            {/* Highlight box */}
             {indicator.visible && (
               <div
                 className="absolute rounded-lg border-2"
@@ -2359,7 +2524,6 @@ const SignDocumentPage = () => {
               />
             )}
 
-            {/* Arrow bubble (brand gradient) */}
             {indicator.visible && (
               <div
                 className="absolute flex items-center justify-center"
@@ -2401,7 +2565,6 @@ const SignDocumentPage = () => {
       <ToastContainer containerId={"signaturesign"} />
       <div className="flex h-screen bg-gray-100">
         <div className="flex-1 p-4 overflow-auto">
-          {/* Signing-order banners */}
           {orderInfo.uses && (
             <div
               className={`mb-4 p-3 rounded border ${
@@ -2411,11 +2574,14 @@ const SignDocumentPage = () => {
               }`}
             >
               {orderInfo.canSign ? (
-                <div><strong>It’s your turn to sign.</strong> You are order #{orderInfo.myOrder}.</div>
+                <div>
+                  <strong>It’s your turn to sign.</strong> You are order #{orderInfo.myOrder}.
+                </div>
               ) : (
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <strong>Waiting for your turn…</strong> You are order #{orderInfo.myOrder}. Current order is #{orderInfo.currentOrder}.
+                    <strong>Waiting for your turn…</strong> You are order #{orderInfo.myOrder}. Current
+                    order is #{orderInfo.currentOrder}.
                     {orderInfo.waiting?.length > 0 && (
                       <div className="text-xs mt-1">Pending before you: {orderInfo.waiting.join(", ")}</div>
                     )}
@@ -2432,13 +2598,13 @@ const SignDocumentPage = () => {
             </div>
           )}
 
-          {/* Top action buttons (unchanged) */}
           <button
             onClick={declineSign}
             className="fixed top-4 right-[20%] z-50 bg-[#29354a] text-white px-6 py-2 rounded-[20px] shadow-l"
           >
             Decline
           </button>
+
           <button
             onClick={handleSaveDocument}
             className="fixed top-4 right-4 z-50 bg-[#002864] text-white px-6 py-2 rounded-[20px] shadow-l disabled:opacity-60 disabled:cursor-not-allowed"
@@ -2447,7 +2613,6 @@ const SignDocumentPage = () => {
             Complete Signing
           </button>
 
-          {/* Bottom-right Next/Prev required (brand gradient) */}
           {orderInfo.canSign && todos.length > 0 && (
             <>
               <BrandPillButton
@@ -2468,16 +2633,19 @@ const SignDocumentPage = () => {
           {loadingError ? (
             <div className="text-red-500 text-center mt-8">{loadingError}</div>
           ) : file ? (
-            file.toLowerCase().includes(".pdf") || file.startsWith("http") ? (
+            isLikelyPdf(file) ? (
               renderPDFWithOverlay()
-            ) : (
+            ) : isLikelyImage(file) ? (
               <div className="relative inline-block" style={{ width: `${VIRTUAL_WIDTH}px` }}>
                 <img
                   src={file}
                   alt="Document"
                   className="w-[800px] h-auto block"
                   onLoad={(e) => setPageHeight(e.currentTarget.height)}
-                  onError={(e) => { e.currentTarget.style.display = "none"; }}
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                    setLoadingError("Failed to load image document");
+                  }}
                 />
                 {pageHeight && (
                   <div
@@ -2492,52 +2660,21 @@ const SignDocumentPage = () => {
                           {renderFieldPreview(el, orderInfo.canSign)}
                         </div>
                       ))}
-
-                    {indicator.visible && (
-                      <>
-                        <div
-                          className="absolute rounded-lg border-2"
-                          style={{
-                            left: indicator.hilite.left,
-                            top: indicator.hilite.top,
-                            width: indicator.hilite.width,
-                            height: indicator.hilite.height,
-                            borderColor: BRAND.from,
-                            boxShadow: `0 0 0 3px ${BRAND.glow}`,
-                          }}
-                        />
-                        <div
-                          className="absolute flex items-center justify-center"
-                          style={{
-                            left: indicator.left,
-                            top: indicator.top,
-                            width: ARROW_RADIUS * 2,
-                            height: ARROW_RADIUS * 2,
-                            borderRadius: ARROW_RADIUS,
-                            background: BRAND_GRADIENT,
-                            color: "white",
-                            boxShadow: `0 10px 24px ${BRAND.glow}`,
-                            border: "2px solid #fff",
-                          }}
-                        >
-                          <span
-                            className="text-sm"
-                            style={{ transform: indicator.side === "left" ? "rotate(0deg)" : "rotate(180deg)" }}
-                          >
-                            ➜
-                          </span>
-                        </div>
-                      </>
-                    )}
                   </div>
                 )}
               </div>
+            ) : (
+              <div className="text-center text-gray-600 mt-8">
+                Unsupported file type for preview.
+              </div>
             )
           ) : (
-            <div className="flex items-center justify-center h-full"><p>Loading document...</p></div>
+            <div className="flex items-center justify-center h-full">
+              <p>Loading document...</p>
+            </div>
           )}
 
-          {/* Element modal */}
+          {/* Element modal (unchanged from your version) */}
           {activeElement && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
               <div className="bg-white p-6 rounded-lg w-96 max-h-[90vh] overflow-y-auto">
@@ -2546,9 +2683,30 @@ const SignDocumentPage = () => {
                 {activeElement.type === "signature" && (
                   <>
                     <div className="flex border-b mb-4">
-                      <button className={`flex-1 py-2 ${signatureType === "draw" ? "border-b-2 border-blue-500" : ""}`} onClick={() => setSignatureType("draw")}>Draw</button>
-                      <button className={`flex-1 py-2 ${signatureType === "image" ? "border-b-2 border-blue-500" : ""}`} onClick={() => setSignatureType("image")}>Upload</button>
-                      <button className={`flex-1 py-2 ${signatureType === "typed" ? "border-b-2 border-blue-500" : ""}`} onClick={() => setSignatureType("typed")}>Type</button>
+                      <button
+                        className={`flex-1 py-2 ${
+                          signatureType === "draw" ? "border-b-2 border-blue-500" : ""
+                        }`}
+                        onClick={() => setSignatureType("draw")}
+                      >
+                        Draw
+                      </button>
+                      <button
+                        className={`flex-1 py-2 ${
+                          signatureType === "image" ? "border-b-2 border-blue-500" : ""
+                        }`}
+                        onClick={() => setSignatureType("image")}
+                      >
+                        Upload
+                      </button>
+                      <button
+                        className={`flex-1 py-2 ${
+                          signatureType === "typed" ? "border-b-2 border-blue-500" : ""
+                        }`}
+                        onClick={() => setSignatureType("typed")}
+                      >
+                        Type
+                      </button>
                     </div>
 
                     {signatureType === "draw" && (
@@ -2566,7 +2724,12 @@ const SignDocumentPage = () => {
                           onTouchMove={draw}
                           onTouchEnd={stopDrawing}
                         />
-                        <button onClick={handleClearCanvas} className="bg-gray-300 text-gray-700 px-3 py-1 rounded text-sm">Clear</button>
+                        <button
+                          onClick={handleClearCanvas}
+                          className="bg-gray-300 text-gray-700 px-3 py-1 rounded text-sm"
+                        >
+                          Clear
+                        </button>
                       </div>
                     )}
 
@@ -2575,12 +2738,23 @@ const SignDocumentPage = () => {
                         {currentProfile?.signature && (
                           <div className="text-center">
                             <p className="text-sm text-gray-600 mb-2">Existing Signature:</p>
-                            <img src={currentProfile.signature} alt="Existing Signature" className="mx-auto w-40 h-20 object-contain border rounded" />
+                            <img
+                              src={currentProfile.signature}
+                              alt="Existing Signature"
+                              className="mx-auto w-40 h-20 object-contain border rounded"
+                            />
                           </div>
                         )}
                         <label className="w-full border-2 border-dashed p-8 text-center cursor-pointer block mb-4">
-                          {currentProfile?.signature ? "Click to upload new image" : "Click to upload signature image"}
-                          <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
+                          {currentProfile?.signature
+                            ? "Click to upload new image"
+                            : "Click to upload signature image"}
+                          <input
+                            type="file"
+                            className="hidden"
+                            accept="image/*"
+                            onChange={handleImageUpload}
+                          />
                         </label>
                       </div>
                     )}
@@ -2596,7 +2770,12 @@ const SignDocumentPage = () => {
                         />
                         {inputValue && (
                           <div className="text-center border p-2">
-                            <img src={convertTextToSignature(inputValue)} alt="Signature Preview" className="mx-auto" style={{ width: 200, height: 80 }} />
+                            <img
+                              src={convertTextToSignature(inputValue)}
+                              alt="Signature Preview"
+                              className="mx-auto"
+                              style={{ width: 200, height: 80 }}
+                            />
                           </div>
                         )}
                       </>
@@ -2606,7 +2785,12 @@ const SignDocumentPage = () => {
 
                 {activeElement.type === "checkbox" && (
                   <div className="flex items-center gap-2">
-                    <input type="checkbox" checked={!!inputValue} onChange={(e) => setInputValue(e.target.checked)} className="w-5 h-5" />
+                    <input
+                      type="checkbox"
+                      checked={!!inputValue}
+                      onChange={(e) => setInputValue(e.target.checked)}
+                      className="w-5 h-5"
+                    />
                     <span className="text-sm">Checkbox</span>
                   </div>
                 )}
@@ -2617,7 +2801,9 @@ const SignDocumentPage = () => {
                       Click to upload image
                       <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
                     </label>
-                    {inputValue && <img src={inputValue} alt="Preview" className="mx-auto max-h-32 object-contain" />}
+                    {inputValue && (
+                      <img src={inputValue} alt="Preview" className="mx-auto max-h-32 object-contain" />
+                    )}
                   </div>
                 )}
 
@@ -2654,8 +2840,12 @@ const SignDocumentPage = () => {
                 )}
 
                 <div className="flex justify-end gap-2">
-                  <button onClick={() => setActiveElement(null)} className="bg-gray-200 px-4 py-2 rounded">Cancel</button>
-                  <button onClick={handleSave} className="bg-blue-600 text-white px-4 py-2 rounded">Save</button>
+                  <button onClick={() => setActiveElement(null)} className="bg-gray-200 px-4 py-2 rounded">
+                    Cancel
+                  </button>
+                  <button onClick={handleSave} className="bg-blue-600 text-white px-4 py-2 rounded">
+                    Save
+                  </button>
                 </div>
               </div>
             </div>
