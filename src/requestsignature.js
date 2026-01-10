@@ -9,7 +9,7 @@ import { useSearchParams } from "react-router-dom";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
-const getPdfFileSource = (file) => file; // react-pdf accepts File or URL string
+//const getPdfFileSource = (file) => file; // react-pdf accepts File or URL string
 
 // -------------------- Draft resume key --------------------
 const ACTIVE_DRAFT_KEY = "active_draft_docId";
@@ -616,21 +616,118 @@ export default function RequestSignaturesPage() {
     setShowSendPopup(true);
   };
 
-const sendThroughEmail = async () => {
-  try {
-    setLoading(true);
+// const sendThroughEmail = async () => {
+//   try {
+//     setLoading(true);
 
+//     const token = localStorage.getItem("token");
+//     if (!token) {
+//       toast.error("You are not logged in.", { containerId: "requestSignature" });
+//       setLoading(false);
+//       return;
+//     }
+
+//     const headers = { headers: { authorization: `Bearer ${token}` } };
+//     const elementsToSave = normalizeForPdf(signatureElements);
+
+//     // Build the exact recipients array your backend expects
+//     const recipients = (formData.recipients || []).map((r) => ({
+//       email: r.email,
+//       name: r.name || "",
+//       phone: r.phone || "",
+//       willSign: r.willSign !== false,
+//       order: r.order || 0,
+//     }));
+
+//     if (!recipients.length) {
+//       toast.error("No recipients selected.", { containerId: "requestSignature" });
+//       setLoading(false);
+//       return;
+//     }
+
+//     // If we have a draft: finalize and send without re-upload
+//     if (draftDocId) {
+//       await axios.patch(
+//         `${BASE_URL}/editDocument/${draftDocId}`,
+//         {
+//           title: formData.title,
+//           note: formData.note || "",
+//           folder: formData.folder || "default",
+//           recipients,
+//           elements: elementsToSave,
+//           draft: false,
+//           status: "pending",
+//           sendInOrder: !!useSigningOrder,
+//           currentOrder: 1,
+//         },
+//         headers
+//       );
+
+//       await axios.post(
+//         `${BASE_URL}/sendSignRequest`,
+//         {
+//           documentId: draftDocId,
+//           recipients,
+//           sendInOrder: !!useSigningOrder,
+//         },
+//         headers
+//       );
+
+//       localStorage.removeItem(ACTIVE_DRAFT_KEY);
+//       toast.success("Signature request sent", { containerId: "requestSignature" });
+//       window.location.href = "/admin";
+//       return;
+//     }
+
+//     // Otherwise: must upload a File
+//     if (!file || typeof file === "string") {
+//       toast.error("Please upload a PDF before sending.", { containerId: "requestSignature" });
+//       setLoading(false);
+//       return;
+//     }
+
+//     const form = new FormData();
+//     form.append("document", file);
+//     form.append("title", formData.title);
+//     form.append("note", formData.note || "");
+//     form.append("folder", formData.folder || "default");
+//     form.append("elements", JSON.stringify(elementsToSave));
+//     form.append("recipients", JSON.stringify(recipients));
+//     form.append("sendInOrder", String(!!useSigningOrder));
+
+//     const saveResponse = await axios.post(`${BASE_URL}/saveDocument`, form, headers);
+//     const documentId = saveResponse.data?.doc?._id;
+
+//     await axios.post(
+//       `${BASE_URL}/sendSignRequest`,
+//       {
+//         documentId,
+//         recipients,
+//         sendInOrder: !!useSigningOrder,
+//       },
+//       headers
+//     );
+
+//     toast.success("Signature request sent", { containerId: "requestSignature" });
+//     window.location.href = "/admin";
+//   } catch (e) {
+//     console.error("sendThroughEmail error:", e);
+//     toast.error(e?.response?.data?.error || "Something went wrong, please try again", {
+//       containerId: "requestSignature",
+//     });
+//     setLoading(false);
+//   }
+// };
+
+const sendThroughEmail = async () => {
+  setLoading(true);
+  try {
     const token = localStorage.getItem("token");
-    if (!token) {
-      toast.error("You are not logged in.", { containerId: "requestSignature" });
-      setLoading(false);
-      return;
-    }
+    if (!token) throw new Error("You are not logged in.");
 
     const headers = { headers: { authorization: `Bearer ${token}` } };
     const elementsToSave = normalizeForPdf(signatureElements);
 
-    // Build the exact recipients array your backend expects
     const recipients = (formData.recipients || []).map((r) => ({
       email: r.email,
       name: r.name || "",
@@ -639,11 +736,7 @@ const sendThroughEmail = async () => {
       order: r.order || 0,
     }));
 
-    if (!recipients.length) {
-      toast.error("No recipients selected.", { containerId: "requestSignature" });
-      setLoading(false);
-      return;
-    }
+    if (!recipients.length) throw new Error("No recipients selected.");
 
     // If we have a draft: finalize and send without re-upload
     if (draftDocId) {
@@ -665,11 +758,7 @@ const sendThroughEmail = async () => {
 
       await axios.post(
         `${BASE_URL}/sendSignRequest`,
-        {
-          documentId: draftDocId,
-          recipients,
-          sendInOrder: !!useSigningOrder,
-        },
+        { documentId: draftDocId, recipients, sendInOrder: !!useSigningOrder },
         headers
       );
 
@@ -681,9 +770,7 @@ const sendThroughEmail = async () => {
 
     // Otherwise: must upload a File
     if (!file || typeof file === "string") {
-      toast.error("Please upload a PDF before sending.", { containerId: "requestSignature" });
-      setLoading(false);
-      return;
+      throw new Error("Please upload a PDF before sending.");
     }
 
     const form = new FormData();
@@ -700,21 +787,26 @@ const sendThroughEmail = async () => {
 
     await axios.post(
       `${BASE_URL}/sendSignRequest`,
-      {
-        documentId,
-        recipients,
-        sendInOrder: !!useSigningOrder,
-      },
+      { documentId, recipients, sendInOrder: !!useSigningOrder },
       headers
     );
 
     toast.success("Signature request sent", { containerId: "requestSignature" });
     window.location.href = "/admin";
   } catch (e) {
-    console.error("sendThroughEmail error:", e);
-    toast.error(e?.response?.data?.error || "Something went wrong, please try again", {
-      containerId: "requestSignature",
-    });
+    const data = e?.response?.data;
+    console.error("sendThroughEmail error:", data || e);
+
+    toast.error(
+      data?.error || e?.message || "Something went wrong, please try again",
+      { containerId: "requestSignature" }
+    );
+
+    // optional: if your backend returns details
+    if (data?.details) {
+      console.warn("Backend details:", data.details);
+    }
+  } finally {
     setLoading(false);
   }
 };
