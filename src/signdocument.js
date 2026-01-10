@@ -1714,95 +1714,92 @@ const SignDocumentPage = () => {
 
   /* ---------------------------- Load document ---------------------------- */
   const reloadDocument = async () => {
-    try {
-      setLoadingError(null);
-      setPdfLoadError(null);
+  try {
+    setLoadingError(null);
 
-      const params = new URLSearchParams(location.search);
-      const queryEmail = (params.get("email") || "").trim();
+    const params = new URLSearchParams(location.search);
+    const queryEmailRaw = (params.get("email") || "").trim();
+    const queryEmail = queryEmailRaw.toLowerCase();
 
-      const loginAs = async (email) => {
-        if (!email) throw new Error("Invite link is missing ?email=");
-        const authRes = await axios.post(`${BASE_URL}/registerAndLogin`, { email });
-        localStorage.setItem("token", authRes.data.token);
-        return { token: authRes.data.token, me: authRes.data };
-      };
+    const loginAs = async (email) => {
+      if (!email) throw new Error("Invite link is missing ?email=");
+      const authRes = await axios.post(`${BASE_URL}/registerAndLogin`, { email });
+      localStorage.setItem("token", authRes.data.token);
+      return authRes.data; // { token, user, profile, preference }
+    };
 
-      let token = localStorage.getItem("token");
-      let me = null;
+    let token = localStorage.getItem("token");
+    let me = null;
 
-      // 1) If token exists, try to load current session
-      if (token) {
-        try {
-          const res = await axios.get(`${BASE_URL}/getUser`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          me = res.data;
-
-          // If invite email exists and differs, switch to invite email account
-          const sessionEmail = (res.data?.user?.email || "").toLowerCase();
-          if (queryEmail && sessionEmail && sessionEmail !== queryEmail.toLowerCase()) {
-            ({ token, me } = await loginAs(queryEmail));
-          }
-        } catch (e) {
-          // token stale/invalid → clear + fallback to invite login
-          localStorage.removeItem("token");
-          token = null;
-          me = null;
-        }
+    // Try to load existing session
+    if (token) {
+      try {
+        const meRes = await axios.get(`${BASE_URL}/getUser`, {
+          headers: { authorization: `Bearer ${token}` },
+        });
+        me = meRes.data;
+      } catch {
+        localStorage.removeItem("token");
+        token = null;
+        me = null;
       }
-
-      // 2) If no token, login via invite email (if available)
-      if (!token) {
-        if (queryEmail) {
-          ({ token, me } = await loginAs(queryEmail));
-        } else {
-          throw new Error("Missing login token. Please login and try again.");
-        }
-      }
-
-      setCurrentUser(me?.user || null);
-      //setPreference(me?.preference || {});
-      setCurrentProfile(me?.profile || null);
-
-      // ✅ IMPORTANT: Use the URL you computed, and include ?email= for invite links.
-      const docUrl = queryEmail
-        ? `${BASE_URL}/getSpecificDoc/${documentId}?email=${encodeURIComponent(queryEmail)}`
-        : `${BASE_URL}/getSpecificDocAuth/${documentId}`;
-
-      const docRes = await axios.get(docUrl, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      });
-
-      const doc = docRes.data.doc || {};
-      //setDocumentData(doc);
-      setFile(doc.file || null);
-
-      const info = computeSigningOrderMeta(doc, queryEmail || me?.user?.email || "");
-      setOrderInfo(info);
-
-      const signingContext = {
-        recipients: doc.recipients || [],
-        queryEmail,
-        user: me?.user,
-        profile: me?.profile,
-      };
-
-      const recipient = resolveCurrentRecipient(signingContext);
-      const sanitized = sanitizeIncomingElements(doc.elements || []);
-      const prefilled = prefillForRecipient(sanitized, recipient);
-
-      setSignatureElements(prefilled);
-    } catch (err) {
-      console.error("Load error:", err);
-      const msg =
-        err?.response?.data?.error ||
-        err?.response?.data?.message ||
-        err?.message ||
-        "Failed to load document";
-      setLoadingError(msg);
     }
-  };
+
+    // If invite email exists, ensure we are logged in as that email
+    if (queryEmail) {
+      const sessionEmail = (me?.user?.email || "").toLowerCase();
+      if (!me || !token || sessionEmail !== queryEmail) {
+        me = await loginAs(queryEmail);
+        token = me.token;
+      }
+    } else {
+      // No invite email → require login (dashboard open)
+      if (!me || !token) {
+        throw new Error("Please log in to view this document.");
+      }
+    }
+
+    setCurrentUser(me.user);
+    setCurrentProfile(me.profile);
+    // (If you don't use preference anywhere, don't store it to avoid eslint warnings)
+
+    // ✅ IMPORTANT: Use invite endpoint when queryEmail exists
+    const docUrl = queryEmail
+      ? `${BASE_URL}/getSpecificDoc/${documentId}?email=${encodeURIComponent(queryEmail)}`
+      : `${BASE_URL}/getSpecificDocAuth/${documentId}`;
+
+    const docRes = await axios.get(docUrl, queryEmail ? {} : {
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    const doc = docRes.data.doc || {};
+    setFile(doc.file);
+
+    const info = computeSigningOrderMeta(doc, queryEmail || me?.user?.email || "");
+    setOrderInfo(info);
+
+    const signingContext = {
+      recipients: doc.recipients || [],
+      queryEmail,
+      user: me.user,
+      profile: me.profile,
+    };
+
+    const recipient = resolveCurrentRecipient(signingContext);
+    const sanitized = sanitizeIncomingElements(doc.elements || []);
+    const prefilled = prefillForRecipient(sanitized, recipient);
+
+    setSignatureElements(prefilled);
+  } catch (err) {
+    console.error("Load error:", err);
+    const msg =
+      err?.response?.data?.error ||
+      err?.response?.data?.message ||
+      err?.message ||
+      "Failed to load document";
+    setLoadingError(msg);
+  }
+};
 
   useEffect(() => {
     reloadDocument();
