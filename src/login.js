@@ -422,6 +422,10 @@ export default function Login() {
                       alt="Microsoft"
                       src="https://upload.wikimedia.org/wikipedia/commons/4/44/Microsoft_logo.svg"
                       className="h-5 w-5"
+                      loading="lazy"
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
                     />
                     Continue with Microsoft
                   </button>
