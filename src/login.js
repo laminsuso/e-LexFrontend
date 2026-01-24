@@ -420,7 +420,7 @@ export default function Login() {
                   <button type="button" onClick={handleOAuthMicrosoft} className={socialBtnClass}>
                     <img
                       alt="Microsoft"
-                      src="https://static-00.iconduck.com/assets.00/microsoft-azure-icon-2048x2048-1p4mxwrt.png"
+                      src="https://upload.wikimedia.org/wikipedia/commons/4/44/Microsoft_logo.svg"
                       className="h-5 w-5"
                     />
                     Continue with Microsoft

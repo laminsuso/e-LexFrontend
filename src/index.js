@@ -69,6 +69,7 @@ axios.interceptors.response.use(
 
     const lower = msg.toLowerCase();
 
+
     // Only treat these as true auth failures
     const isTokenProblem =
       status === 401 &&
@@ -127,6 +128,13 @@ axios.interceptors.response.use(
   }
 );
 
+  const cookieParser = require("cookie-parser");
+  app.set("trust proxy", 1);
+  app.use(cookieParser());
+
+  const microsoftAuthRoutes = require("./routes/microsoftAuth");
+  app.use("/auth", microsoftAuthRoutes);
+
 
 // -------------------- Router --------------------
 
@@ -159,6 +167,7 @@ const router = createBrowserRouter([
       </PayPalScriptProvider>
     ),
   },
+
 
   // ================== ADMIN AREA ==================
   {

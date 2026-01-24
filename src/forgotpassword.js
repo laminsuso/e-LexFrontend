@@ -64,9 +64,9 @@ export default function ForgotPassword() {
             <span className="text-xl">E-Lex Signature</span>
           </a>
 
-          <div className="mt-8 grid lg:grid-cols-2 gap-8 items-stretch">
+          <div className="mt-8 grid lg:grid-cols-2 gap-8 items-start">
             {/* Left Card */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
               <h1 className="text-3xl font-extrabold text-slate-900">
                 Reset your password
               </h1>
@@ -123,8 +123,12 @@ export default function ForgotPassword() {
             </div>
 
             {/* Right Illustration */}
-            <div className="hidden lg:flex items-center justify-center bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
-              <img src={img} alt="Reset password" className="w-full max-w-[520px]" />
+            <div className="hidden lg:flex items-center justify-center bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+              <img
+                src={img}
+                alt="Reset password"
+                className="w-full max-w-[420px] max-h-[360px] object-contain"
+              />
             </div>
           </div>
         </div>
