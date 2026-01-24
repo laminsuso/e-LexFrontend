@@ -139,7 +139,7 @@ const router = createBrowserRouter([
   { path: "/forgetpassword", element: <ForgotPassword /> },
   { path: "/pricing", element: <Pricing /> },
   { path: "/publicprofile", element: <PublicProfile /> },
-  { path: "/changepassword/:email", element: <ChangePassword /> },
+  { path: "/changePassword/:email", element: <ChangePassword /> },
 
   { path: "/legal/terms", element: <TermsPage /> },
   { path: "/legal/privacy", element: <PrivacyPage /> },
