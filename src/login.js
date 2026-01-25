@@ -142,12 +142,23 @@ export default function Login() {
       if (type === "elex:microsoft") {
         const token = ev.data?.token;
         const user = ev.data?.user;
+        const profile = ev.data?.profile; // in case you send it later
+
         if (token) {
           localStorage.setItem("token", token);
-          if (user) localStorage.setItem("user", JSON.stringify(user));
+
+          if (user) {
+            localStorage.setItem("user", JSON.stringify(user));
+            if (user.email) localStorage.setItem("userEmail", user.email); // ✅ ADD THIS
+          }
+
+          // optional: if backend sends profile too
+          if (profile?.name) localStorage.setItem("profileName", profile.name);
+
           goAfterAuth();
         }
       }
+
     };
 
     window.addEventListener("message", onMsg);
