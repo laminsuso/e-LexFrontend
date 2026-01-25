@@ -258,6 +258,19 @@ export default function Login() {
     }
   };
 
+      const MicrosoftIcon = (
+      <img
+        alt="Microsoft"
+        src="https://upload.wikimedia.org/wikipedia/commons/4/44/Microsoft_logo.svg"
+        className="h-5 w-5"
+        loading="lazy"
+        onError={(e) => {
+          e.currentTarget.style.display = "none";
+        }}
+      />
+    );
+
+
   return (
     <div className="min-h-screen grid lg:grid-cols-2 bg-gradient-to-b from-white to-slate-50">
       {/* Left: form */}
@@ -312,6 +325,14 @@ export default function Login() {
 
           {/* Card */}
           <div className="mt-6 rounded-2xl border border-slate-200 bg-white/70 backdrop-blur p-6 shadow-sm">
+          <div className="flex items-center gap-3 mb-4">
+            <img
+              src="https://res.cloudinary.com/dbjwbveqn/image/upload/v1744296499/icononly_transparent_nobuffer_xmjeis.png"
+              alt="E-Lex Signature"
+              className="h-9 w-9 -rotate-6"
+            />
+            <span className="text-xl font-bold text-slate-900">E-Lex Signature</span>
+          </div>
             {/* Tabs */}
             <div className="flex items-center gap-2 mb-4">
               <button
@@ -418,15 +439,8 @@ export default function Login() {
                     Continue with Google
                   </button>
                   <button type="button" onClick={handleOAuthMicrosoft} className={socialBtnClass}>
-                    <img
-                      alt="Microsoft"
-                      src="https://upload.wikimedia.org/wikipedia/commons/4/44/Microsoft_logo.svg"
-                      className="h-5 w-5"
-                      loading="lazy"
-                      onError={(e) => {
-                        e.currentTarget.style.display = "none";
-                      }}
-                    />
+                   
+                    {MicrosoftIcon}
                     Continue with Microsoft
                   </button>
                 </div>
@@ -559,11 +573,7 @@ export default function Login() {
                     Continue with Google
                   </button>
                   <button type="button" onClick={handleOAuthMicrosoft} className={socialBtnClass}>
-                    <img
-                      alt="Microsoft"
-                      src="https://static-00.iconduck.com/assets.00/microsoft-azure-icon-2048x2048-1p4mxwrt.png"
-                      className="h-5 w-5"
-                    />
+                    {MicrosoftIcon}
                     Continue with Microsoft
                   </button>
                 </div>
