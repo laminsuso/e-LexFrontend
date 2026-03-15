@@ -5,7 +5,6 @@ const stripTrailingSlash = (url) => (url || "").replace(/\/+$/, "");
 const PROD_API =
   stripTrailingSlash(process.env.REACT_APP_PROD_API_URL) ||
   "https://elex-backend-aaa9axb8ghhvfmfp.westeurope-01.azurewebsites.net";
-  "https://e-lex-backend-eight.vercel.app";
 
 // In CRA, only env vars starting with REACT_APP_ are exposed to the browser
 const ENV_API = stripTrailingSlash(
