@@ -114,7 +114,15 @@ export default function Login() {
       const { data } = await axios.post(`${BASE_URL}/auth/google`, { credential, region });
       if (data?.token) {
         localStorage.setItem("token", data.token);
-        if (data.user) localStorage.setItem("user", JSON.stringify(data.user));
+
+        if (data.user) {
+          localStorage.setItem("user", JSON.stringify(data.user));
+
+          // ✅ ADD THIS
+          if (data.user.email) {
+            localStorage.setItem("userEmail", data.user.email);
+          }
+        }
       }
       goAfterAuth();
     } catch (e) {
@@ -211,7 +219,15 @@ export default function Login() {
       const { data } = await axios.post(`${BASE_URL}/login`, { email, password, region });
       if (data?.token) {
         localStorage.setItem("token", data.token);
-        if (data.user) localStorage.setItem("user", JSON.stringify(data.user));
+
+        if (data.user) {
+          localStorage.setItem("user", JSON.stringify(data.user));
+
+          // ✅ ADD THIS (CRITICAL FOR ADMIN PANEL)
+          if (data.user.email) {
+            localStorage.setItem("userEmail", data.user.email);
+          }
+        }
       }
       goAfterAuth();
     } catch (e2) {
@@ -255,7 +271,15 @@ export default function Login() {
 
       if (data?.token) {
         localStorage.setItem("token", data.token);
-        if (data.user) localStorage.setItem("user", JSON.stringify(data.user));
+
+        if (data.user) {
+          localStorage.setItem("user", JSON.stringify(data.user));
+
+          // ✅ ADD THIS (CRITICAL FOR ADMIN PANEL)
+          if (data.user.email) {
+            localStorage.setItem("userEmail", data.user.email);
+          }
+        }
       }
       goAfterAuth();
     } catch (e2) {
