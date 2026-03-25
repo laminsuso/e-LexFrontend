@@ -624,7 +624,7 @@ const PaymentForm = ({ amount, onBack, subscriptionInfo, planId }) => {
                 <span>Processing...</span>
               </div>
             ) : (
-              `Pay $${Number(amount).toFixed(2)}`
+              `Pay D${Number(amount).toFixed(2)}`
             )}
           </button>
         </div>
