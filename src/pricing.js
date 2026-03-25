@@ -14,7 +14,7 @@ const RECOMMENDED_PLAN_NAME = "standard"; // case-insensitive match: "standard"
 const fmtMoney = (n) => {
   const num = Number(n);
   if (!Number.isFinite(num)) return "";
-  return `$${num.toFixed(num % 1 === 0 ? 0 : 2)}`;
+  return `D${num.toFixed(2)}`;
 };
 
 // Handles Decimal128 shapes and strings
